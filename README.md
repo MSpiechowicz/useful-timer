@@ -10,6 +10,7 @@ A native Rust desktop app with independent animated countdown widgets and a char
 - Transparent, borderless widgets request always-on-top placement. A compact name badge sits above the artwork; long names are ellipsized. Right-click the title or artwork for a commands-only menu: **Start / Pause / Resume**, **Reset**, **Remove**, and **Lock / Unlock**. Drag either the title or artwork to move an unlocked widget.
 - **Lock** prevents dragging from both the title and artwork without disabling countdown controls. **Unlock** allows movement again. The lock is saved independently for each timer; older saved timers open unlocked.
 - In the control panel, choose **+ New timer**, set the name, duration, and artwork, then click **Create timer**. Select a timer card to open its workspace. Click its name to rename it; valid settings changes apply immediately, with no Edit or Apply step. The first saved timer is selected when the app opens.
+- Newly created widgets open at the bottom-left corner of the monitor containing the control panel, rather than over the panel. Placement accounts for monitor scale and UI zoom, requests a small inset, and remains subject to the window manager's taskbar/work-area rules. Existing widgets retain their saved positions.
 - **Start** begins an idle countdown. **Pause** freezes its remaining time; **Resume** continues from that time. Timers run independently, including when the control panel is minimized.
 - **Reset** cancels the current countdown and returns the timer to its full configured duration, idle. Completed timers are marked **Done** in the workspace; Start stays disabled until reset. The bomb remains as debris, the hourglass remains flipped, and the rocket stays off-screen; its title remains available for right-click controls and, when unlocked, dragging.
 - Use the full-sized **5 / 15 / 25 / 45 min** duration presets or the time fields to set the configured duration. Preset buttons match the remaining-time adjustment buttons in size. Changing duration returns the timer to idle at the new full duration; changing its label, style, width, or volume preserves the countdown.
@@ -156,6 +157,25 @@ cargo build --release --locked
 ```
 
 The GitHub Actions workflow in [`.github/workflows/build.yml`](.github/workflows/build.yml) runs these checks on Ubuntu 24.04, macOS, and Windows with Rust 1.95.0 and locked dependencies. Its permissions are read-only; it does not sign, publish, or upload releases. The workflow is configured, but no completed CI runs are claimed here. Deterministic automated tests do not replace desktop testing of compositor and audio behavior.
+
+### Automatic releases
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) runs on pushes to `main`; it can also be started manually from the Actions tab on `main`. [semantic-release](https://semantic-release.gitbook.io/semantic-release/) determines the next version from Conventional Commits since the last `v*` release tag:
+
+| Commit | Release |
+| --- | --- |
+| `fix: keep widgets inside the screen` or `perf: reduce rendering work` | Patch |
+| `feat: add a timer style` | Minor |
+| `feat!: change the saved timer format`, or a `BREAKING CHANGE:` footer | Major |
+| `docs:`, `test:`, `ci:`, `chore:`, or other non-release changes | None |
+
+Use these subjects for commits reaching `main`, including the PR title when squash-merging. Ordinary merge commits do not hide Conventional Commits in the merged branch. Existing unformatted commit messages do not trigger a release. With no previous release tag, the first qualifying change produces **1.0.0**, independent of the initial Cargo development version; do not bump versions manually.
+
+The workflow plans the version without publishing, stamps `Cargo.toml` and the app's entry in `Cargo.lock` in each build checkout, and runs formatting, compilation, tests, Clippy, and locked release builds before publishing. It uploads archives containing the executable, `LICENSE`, and `README.md` for Linux x86-64 (`.tar.gz`, Ubuntu 24.04), Intel macOS (`.tar.gz`, macOS 14), and Windows x86-64 (`.zip`, MSVC). These are unsigned binaries, not installers or macOS app bundles. Linux still needs the runtime libraries and X11/XWayland environment described above.
+
+Only after every platform succeeds does semantic-release commit the Cargo versions and generated `CHANGELOG.md` as `chore(release): <version> [skip ci]`, create a `v<version>` tag, and publish the GitHub release with generated notes and all three archives. Publishing rejects missing archives or a version different from the one built. Release runs are serialized; a non-release change skips builds and publication. Nothing is published to npm or crates.io. Node.js 24.10.0 and the locked npm dependencies are used only for release automation; the desktop application remains Rust-only.
+
+The planning and publishing jobs request `contents: write`; build jobs remain read-only. The default `GITHUB_TOKEN` is sufficient when it can push release commits to `main`. If branch protection or repository rules require a bypass, configure a narrowly scoped GitHub App token or personal access token as the Actions secret **`RELEASE_TOKEN`**, with repository contents read/write permission and permission to push release commits under those rules. The workflow uses that secret when present. Do not disable branch protections globally. Releases created with the default `GITHUB_TOKEN` do not trigger other release-event workflows; use `RELEASE_TOKEN` if those are needed. No completed hosted release run is claimed here.
 
 ## License
 
