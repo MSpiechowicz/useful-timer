@@ -387,44 +387,67 @@ fn draw_bomb(c: &Canvas<'_>, snapshot: &TimerSnapshot, time: f32) {
     }
     c.glow(160.0, 299.0, 88.0, 12.0, rgba(6, 9, 17, 0.42));
 
-    let fraction = snapshot.remaining_fraction.clamp(0.0, 1.0);
-    let fuse_t = 0.075 + 0.925 * fraction;
-    let fuse_points = [[160.0, 96.0], [150.0, 18.0], [233.0, 24.0], [256.0, 79.0]];
-    let fuse = CubicBezierShape::from_points_stroke(
-        fuse_points.map(|p| c.point(p[0], p[1])),
-        false,
-        Color32::TRANSPARENT,
-        c.stroke(7.0, Color32::from_rgb(97, 60, 22)),
-    )
-    .split_range(0.0..fuse_t);
-    c.painter.add(fuse);
-    let highlight = CubicBezierShape::from_points_stroke(
-        fuse_points.map(|p| c.point(p[0] - 1.0, p[1] - 1.5)),
-        false,
-        Color32::TRANSPARENT,
-        c.stroke(3.0, Color32::from_rgb(229, 193, 110)),
-    )
-    .split_range(0.0..fuse_t);
-    c.painter.add(highlight);
-
-    c.ellipse(160.0, 121.0, 26.0, 8.0, Color32::from_rgb(82, 52, 18));
-    c.metallic_rect(143.0, 96.0, 34.0, 27.0, GOLD);
-    c.ellipse(160.0, 96.0, 17.0, 4.5, Color32::from_rgb(230, 193, 102));
-    c.ellipse(160.0, 94.5, 9.0, 2.5, Color32::from_rgb(95, 66, 26));
-    c.metallic_rect(135.0, 116.0, 50.0, 9.0, GOLD);
-    c.line(
-        [138.0, 117.0],
-        [182.0, 117.0],
-        1.2,
-        Color32::from_rgb(252, 219, 129),
-    );
-
     static SPHERE: LazyLock<Mesh> = LazyLock::new(sphere_mesh);
     c.cached_mesh(&SPHERE);
+    static SEAMS: LazyLock<Mesh> = LazyLock::new(bomb_seam_mesh);
+    c.cached_mesh(&SEAMS);
     c.ring(160.0, 209.0, 91.0, 1.3, Color32::from_rgb(64, 70, 79));
 
-    bomb_seam(c, 173.0, 6.0);
-    bomb_seam(c, 247.0, 6.0);
+    // Curved side walls carry the same shading down to their lower edges.
+    static FOOT: LazyLock<Mesh> = LazyLock::new(|| bomb_cylinder_mesh(25.0, 116.0, 121.0, 5.0));
+    static NECK: LazyLock<Mesh> = LazyLock::new(|| bomb_cylinder_mesh(17.0, 96.0, 116.0, 4.5));
+    c.cached_mesh(&FOOT);
+    c.ellipse(160.0, 116.0, 25.0, 5.0, Color32::from_rgb(213, 170, 77));
+    c.ellipse(160.0, 116.5, 17.8, 4.8, rgba(65, 42, 13, 0.24));
+    c.cached_mesh(&NECK);
+    let lip_color = Color32::from_rgb(230, 193, 102);
+    c.ellipse(160.0, 96.0, 17.0, 4.5, lip_color);
+    c.ellipse(160.0, 96.0, 9.0, 3.0, Color32::from_rgb(78, 53, 22));
+
+    let fraction = snapshot.remaining_fraction.clamp(0.0, 1.0);
+    let fuse_t = 0.075 + 0.925 * fraction;
+    // Continue into the socket; its front lip hides the blunt stroke ends.
+    let fuse_points = [[160.0, 99.3], [150.0, 18.0], [233.0, 24.0], [256.0, 79.0]];
+    for (width, offset, color) in [
+        (6.0, 0.0, Color32::from_rgb(97, 60, 22)),
+        (4.0, 0.0, Color32::from_rgb(183, 139, 64)),
+        (1.5, -0.8, Color32::from_rgb(239, 209, 139)),
+    ] {
+        c.painter.add(
+            CubicBezierShape::from_points_stroke(
+                fuse_points.map(|p| c.point(p[0] + offset, p[1])),
+                false,
+                Color32::TRANSPARENT,
+                c.stroke(width, color),
+            )
+            .split_range(0.0..fuse_t),
+        );
+    }
+    static FRONT_LIP: LazyLock<Mesh> = LazyLock::new(|| {
+        let mut mesh = Mesh::default();
+        mesh.reserve_vertices(33 * 4);
+        mesh.reserve_triangles(32 * 6);
+        for i in 0..=32 {
+            let (sin, cos) = (PI * i as f32 / 32.0).sin_cos();
+            for (rx, ry, color) in [
+                (8.7, 2.7, Color32::TRANSPARENT),
+                (9.0, 3.0, Color32::from_rgb(230, 193, 102)),
+                (16.7, 4.2, Color32::from_rgb(230, 193, 102)),
+                (17.0, 4.5, Color32::TRANSPARENT),
+            ] {
+                mesh.colored_vertex(Pos2::new(160.0 + rx * cos, 96.0 + ry * sin), color);
+            }
+        }
+        for i in 0..32 {
+            for band in 0..3 {
+                let a = i * 4 + band;
+                mesh.add_triangle(a, a + 1, a + 4);
+                mesh.add_triangle(a + 1, a + 5, a + 4);
+            }
+        }
+        mesh
+    });
+    c.cached_mesh(&FRONT_LIP);
 
     digital_display(
         c,
@@ -449,24 +472,94 @@ fn draw_bomb(c: &Canvas<'_>, snapshot: &TimerSnapshot, time: f32) {
     }
 }
 
-fn bomb_seam(c: &Canvas<'_>, y: f32, sag: f32) {
-    // Inset the stroke by its width; both ends follow the same sphere as the shell.
-    for (y, width, color) in [
-        (y, 3.0, Color32::from_rgb(9, 11, 15)),
-        (y - 0.7, 1.1, Color32::from_rgb(73, 80, 90)),
-    ] {
-        let half_width = (89.0_f32.powi(2) - (y - 209.0).powi(2)).sqrt();
-        c.curve(
-            [
-                [160.0 - half_width, y],
-                [160.0 - half_width * 0.52, y + sag],
-                [160.0 + half_width * 0.52, y + sag],
-                [160.0 + half_width, y],
-            ],
-            width,
-            color,
+fn bomb_cylinder_mesh(radius: f32, top: f32, bottom: f32, depth: f32) -> Mesh {
+    const STEPS: u32 = 64;
+    const STOPS: [f32; 6] = [0.0, 0.12, 0.33, 0.51, 0.80, 1.0];
+    let mut mesh = Mesh::default();
+    mesh.reserve_vertices(((STEPS + 1) * 3) as usize);
+    mesh.reserve_triangles((STEPS * 4) as usize);
+    for i in 0..=STEPS {
+        let t = i as f32 / STEPS as f32;
+        let x = t * 2.0 - 1.0;
+        let segment = STOPS
+            .partition_point(|stop| *stop < t)
+            .saturating_sub(1)
+            .min(4);
+        let blend = (t - STOPS[segment]) / (STOPS[segment + 1] - STOPS[segment]);
+        let channels: [u8; 3] = std::array::from_fn(|channel| {
+            let a = f32::from(GOLD[segment][channel]);
+            let b = f32::from(GOLD[segment + 1][channel]);
+            (a + (b - a) * blend).round() as u8
+        });
+        let color = Color32::from_rgb(channels[0], channels[1], channels[2]);
+        let lower = bottom + depth * (1.0 - x * x).max(0.0).sqrt();
+        mesh.colored_vertex(Pos2::new(160.0 + x * radius, top), color);
+        mesh.colored_vertex(Pos2::new(160.0 + x * radius, lower), color);
+        mesh.colored_vertex(
+            Pos2::new(160.0 + x * radius, lower + 0.5),
+            Color32::TRANSPARENT,
         );
     }
+    for i in 0..STEPS {
+        let a = i * 3;
+        mesh.add_triangle(a, a + 1, a + 3);
+        mesh.add_triangle(a + 1, a + 4, a + 3);
+        mesh.add_triangle(a + 1, a + 2, a + 4);
+        mesh.add_triangle(a + 2, a + 5, a + 4);
+    }
+    mesh
+}
+
+fn bomb_seam_mesh() -> Mesh {
+    const STEPS: u32 = 96;
+    const RADIUS: f32 = 90.5;
+    let mut mesh = Mesh::default();
+    mesh.reserve_vertices((4 * (STEPS + 1) * 4) as usize);
+    mesh.reserve_triangles((4 * STEPS * 6) as usize);
+    for seam_y in [173.0, 247.0] {
+        for (y, width, color) in [
+            (seam_y, 3.0, Color32::from_rgb(9, 11, 15)),
+            (seam_y - 0.7, 1.1, Color32::from_rgb(73, 80, 90)),
+        ] {
+            // Follow a slightly inset sphere, with a small leftward alignment
+            // correction. Taper both ends before they meet the shell border.
+            let height = y - 209.0;
+            let tilt = (4.5 / (RADIUS * RADIUS - height * height).sqrt()).atan();
+            let (sin_tilt, cos_tilt) = tilt.sin_cos();
+            let latitude = height * cos_tilt;
+            let radius = (RADIUS * RADIUS - latitude * latitude).sqrt();
+            let start = (latitude * sin_tilt / (radius * cos_tilt)).asin();
+            let base = mesh.vertices.len() as u32;
+            for i in 0..=STEPS {
+                let angle = start + (PI - 2.0 * start) * i as f32 / STEPS as f32;
+                let (sin, cos) = angle.sin_cos();
+                let center = Pos2::new(
+                    159.5 + radius * cos,
+                    209.0 + latitude * cos_tilt + radius * sin_tilt * sin,
+                );
+                let depth = (radius * cos_tilt * sin - latitude * sin_tilt).max(0.0);
+                let coverage = smoothstep(depth / (RADIUS * 0.4));
+                let normal = Vec2::new(sin_tilt * cos, sin).normalized();
+                let half_width = width * 0.5;
+                for (offset, tint) in [
+                    (-half_width - 0.5, Color32::TRANSPARENT),
+                    (-half_width, color.gamma_multiply(coverage)),
+                    (half_width, color.gamma_multiply(coverage)),
+                    (half_width + 0.5, Color32::TRANSPARENT),
+                ] {
+                    mesh.colored_vertex(center + normal * (offset * coverage), tint);
+                }
+            }
+            for i in 0..STEPS {
+                for band in 0..3 {
+                    let a = base + i * 4 + band;
+                    mesh.add_triangle(a, a + 1, a + 4);
+                    mesh.add_triangle(a + 1, a + 5, a + 4);
+                }
+            }
+        }
+    }
+    mesh
 }
 
 fn sphere_mesh() -> Mesh {
@@ -1273,52 +1366,6 @@ const ROCKET_HULL_ROWS: usize = 80;
 fn rocket_body(c: &Canvas<'_>, snapshot: &TimerSnapshot, time: f32, engine: bool) {
     let finished = snapshot.phase == TimerPhase::Finished;
     let coral = Color32::from_rgb(211, 89, 68);
-    if engine {
-        let pulse = 0.5 + 0.5 * (time * 17.0).sin();
-        let length = if finished { 65.0 } else { 31.0 + pulse * 9.0 };
-        c.glow(
-            160.0,
-            250.0 + length * 0.35,
-            27.0,
-            length * 0.8,
-            rgba(255, 119, 30, 0.55),
-        );
-        let mut flame = Mesh::default();
-        flame.reserve_vertices(125);
-        flame.reserve_triangles(192);
-        for row in 0..=24 {
-            let t = row as f32 / 24.0;
-            let half_width = (1.0 - t).powf(0.75) * (13.0 + 2.0 * (time * 24.0 - t * 11.0).sin());
-            let bend = (time * 19.0 - t * 8.0).sin() * t * 3.0;
-            let opacity = 1.0 - smoothstep((t - 0.75) / 0.25);
-            for (column, color) in [
-                (-1.0, Color32::TRANSPARENT),
-                (-0.60, rgba(255, 116, 23, opacity)),
-                (0.0, rgba(255, 248, 204, opacity)),
-                (0.60, rgba(255, 157, 42, opacity)),
-                (1.0, Color32::TRANSPARENT),
-            ] {
-                flame.colored_vertex(
-                    c.point(160.0 + bend + column * half_width, 242.0 + length * t),
-                    color,
-                );
-            }
-        }
-        for row in 0..24 {
-            for column in 0..4 {
-                let a = row * 5 + column;
-                flame.add_triangle(a, a + 5, a + 1);
-                flame.add_triangle(a + 1, a + 5, a + 6);
-            }
-        }
-        c.painter.add(flame);
-        for i in 0..8 {
-            let age = (time * 2.5 + i as f32 * 0.618_034).fract();
-            let x = 160.0 + (i as f32 * 2.399_963).sin() * age * 16.0;
-            c.circle(x, 251.0 + age * 43.0, 0.9, rgba(255, 216, 135, 1.0 - age));
-        }
-    }
-
     c.polygon(
         &[
             [123.0, 179.0],
@@ -1357,6 +1404,52 @@ fn rocket_body(c: &Canvas<'_>, snapshot: &TimerSnapshot, time: f32, engine: bool
     c.metallic_rect(139.0, 227.0, 42.0, 17.0, STEEL);
     c.ellipse(160.0, 244.0, 21.0, 4.0, Color32::from_rgb(43, 49, 56));
     c.ellipse(160.0, 244.0, 14.0, 2.2, Color32::from_rgb(17, 22, 29));
+    // The plume starts inside the visible opening, in front of the nozzle's underside.
+    if engine {
+        let pulse = 0.5 + 0.5 * (time * 17.0).sin();
+        let length = if finished { 65.0 } else { 31.0 + pulse * 9.0 };
+        c.glow(
+            160.0,
+            250.0 + length * 0.35,
+            27.0,
+            length * 0.8,
+            rgba(255, 119, 30, 0.55),
+        );
+        let mut flame = Mesh::default();
+        flame.reserve_vertices(125);
+        flame.reserve_triangles(192);
+        for row in 0..=24 {
+            let t = row as f32 / 24.0;
+            let half_width = (1.0 - t).powf(0.75) * (11.0 + 2.0 * (time * 24.0 - t * 11.0).sin());
+            let bend = (time * 19.0 - t * 8.0).sin() * t * 3.0;
+            let opacity = 1.0 - smoothstep((t - 0.75) / 0.25);
+            for (column, color) in [
+                (-1.0, Color32::TRANSPARENT),
+                (-0.60, rgba(255, 116, 23, opacity)),
+                (0.0, rgba(255, 248, 204, opacity)),
+                (0.60, rgba(255, 157, 42, opacity)),
+                (1.0, Color32::TRANSPARENT),
+            ] {
+                flame.colored_vertex(
+                    c.point(160.0 + bend + column * half_width, 244.0 + length * t),
+                    color,
+                );
+            }
+        }
+        for row in 0..24 {
+            for column in 0..4 {
+                let a = row * 5 + column;
+                flame.add_triangle(a, a + 5, a + 1);
+                flame.add_triangle(a + 1, a + 5, a + 6);
+            }
+        }
+        c.painter.add(flame);
+        for i in 0..8 {
+            let age = (time * 2.5 + i as f32 * 0.618_034).fract();
+            let x = 160.0 + (i as f32 * 2.399_963).sin() * age * 16.0;
+            c.circle(x, 251.0 + age * 43.0, 0.9, rgba(255, 216, 135, 1.0 - age));
+        }
+    }
 
     // Symmetric convex hull with horizontal metallic shading.
     static BODY: LazyLock<Mesh> = LazyLock::new(rocket_mesh);
@@ -1533,12 +1626,6 @@ fn digital_display(
         } else {
             Color32::from_rgb(54, 31, 33)
         },
-    );
-    c.line(
-        [x + 5.0, y + 4.0],
-        [x + width - 5.0, y + 4.0],
-        1.0,
-        rgba(255, 228, 218, 0.19),
     );
 
     let seconds = display_seconds(remaining);
