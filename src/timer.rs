@@ -13,10 +13,11 @@ pub enum TimerStyle {
     MachineCore,
     DragonOrb,
     CrescentWand,
+    ClockworkBloom,
 }
 
 impl TimerStyle {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Bomb,
         Self::Hourglass,
         Self::Rocket,
@@ -24,6 +25,7 @@ impl TimerStyle {
         Self::MachineCore,
         Self::DragonOrb,
         Self::CrescentWand,
+        Self::ClockworkBloom,
     ];
 
     pub fn label(self) -> &'static str {
@@ -35,6 +37,7 @@ impl TimerStyle {
             Self::MachineCore => "Machine Core",
             Self::DragonOrb => "Dragon Orb",
             Self::CrescentWand => "Crescent Wand",
+            Self::ClockworkBloom => "Clockwork Bloom",
         }
     }
 }

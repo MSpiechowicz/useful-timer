@@ -15,12 +15,15 @@
 ### Features
 
 * Add Code Rain, Machine Core, and four-star Dragon Orb timer artwork with distinct finite completion effects and synthesized sounds.
-* Expand the adaptive artwork picker to seven styles and add a saved per-timer Reduced motion option.
+* Expand the adaptive artwork picker to eight styles and add a saved per-timer Reduced motion option.
 * Keep new-style animation poses continuous across pause/resume and remaining-time adjustments.
 * Add illustrated Crescent Wand with an engraved crescent, compact upward-flaring ribbon folds and a three-bead center, round pearlescent crystal on a gold pedestal, falling sparkles, crystal-light/star-shower completion, and a synthesized chime.
+* Add Clockwork Bloom with articulated porcelain petals, gold edges and stamens, physical hinges, a tiered hub and plinth, a remaining-time bar, and a synthesized latch-and-chime completion sound.
 
 ### Bug Fixes
 
+* Render Clockwork Bloom with per-pixel depth testing, antialiased metal hardware and petals, finer plinth geometry, and supersampled pixel coverage; keep solid hardware lighting continuous through grazing angles.
+* Make Bloom's completion unfold monotonically into a stationary final pose, without reversal or oscillation, and keep its caption fixed above the entire animation with a small margin.
 * Keep Hours, Minutes, and Seconds inputs fixed-width while editing long values.
 * Refine Machine Core sizing and spacing, remove the pale lens reflection and duplicate progress bar, and close its iris fully dark.
 * Keep Machine Core's white arcs rotating steadily and refine Dragon Orb's layered glass highlights.
