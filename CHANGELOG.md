@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/MSpiechowicz/useful-timer/compare/v1.1.0...v1.2.0) (2026-09-30)
+
+### Features
+
+* add cinematic timer styles and illustrated crescent wand ([89415e8](https://github.com/MSpiechowicz/useful-timer/commit/89415e80727c9152cbfd4341b8b4ea18e1f8f808))
+
 ## Unreleased
 
 ### Features
