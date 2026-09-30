@@ -42,6 +42,101 @@ fn layer(c: &Canvas<'_>, texture: &TextureHandle, index: u32, tint: Color32) {
     c.painter.add(mesh);
 }
 
+fn crystal_bloom(c: &Canvas<'_>, radii: [f32; 2], tint: Color32) {
+    let ctx = c.painter.ctx();
+    let id = eframe::egui::Id::new("wand-crystal-bloom");
+    let texture = ctx
+        .data(|data| data.get_temp::<TextureHandle>(id))
+        .unwrap_or_else(|| {
+            const SIZE: usize = 128;
+            let mut pixels = Vec::with_capacity(SIZE * SIZE);
+            for y in 0..SIZE {
+                for x in 0..SIZE {
+                    let dx = (x as f32 + 0.5) / SIZE as f32 * 2.0 - 1.0;
+                    let dy = (y as f32 + 0.5) / SIZE as f32 * 2.0 - 1.0;
+                    // A Gaussian fades to transparent well before the quad's edge.
+                    let alpha = (-8.0 * (dx * dx + dy * dy)).exp();
+                    pixels.push(rgba(255, 255, 255, alpha));
+                }
+            }
+            let texture = ctx.load_texture(
+                "wand-crystal-bloom",
+                ColorImage::new([SIZE, SIZE], pixels),
+                TextureOptions::LINEAR,
+            );
+            ctx.data_mut(|data| data.insert_temp(id, texture.clone()));
+            texture
+        });
+    let mut mesh = Mesh::with_texture(texture.id());
+    mesh.reserve_vertices(4);
+    mesh.reserve_triangles(2);
+    for (x, y) in [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)] {
+        mesh.vertices.push(Vertex {
+            pos: c.point(
+                CRYSTAL[0] + (x * 2.0 - 1.0) * radii[0] * CRYSTAL_SCALE,
+                CRYSTAL[1] + (y * 2.0 - 1.0) * radii[1] * CRYSTAL_SCALE,
+            ),
+            uv: Pos2::new(x, y),
+            color: tint,
+        });
+    }
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    c.painter.add(mesh);
+}
+
+fn light_trails(c: &Canvas<'_>, elapsed: f32, strength: f32) {
+    const RAYS: u32 = 24;
+    const STEPS: u32 = 8;
+    let mut mesh = Mesh::default();
+    mesh.reserve_vertices((RAYS * (STEPS + 1) * 4) as usize);
+    mesh.reserve_triangles((RAYS * STEPS * 6) as usize);
+    let origin = c.point(CRYSTAL[0], CRYSTAL[1]);
+    let feather = c.painter.ctx().pixels_per_point().recip();
+    for ray in 0..RAYS {
+        let phase = seed(ray + 401) * TAU;
+        let angle = ray as f32 * TAU / RAYS as f32
+            + (seed(ray + 419) - 0.5) * 0.12
+            + elapsed * 0.12
+            + (elapsed * 1.7 + phase).sin() * 0.035
+            + c.angle;
+        let direction = Vec2::angled(angle);
+        let normal = Vec2::new(-direction.y, direction.x);
+        let length = (58.0 + seed(ray + 431) * 68.0)
+            * (0.88 + 0.12 * (elapsed * 2.0 + phase).sin())
+            * c.scale
+            * CRYSTAL_SCALE;
+        let width = (0.35 + seed(ray + 449) * 0.3) * c.scale * CRYSTAL_SCALE;
+        let travel = (elapsed * (0.7 + seed(ray + 461) * 0.2) + seed(ray + 479)).fract();
+        let brightness = strength * (0.65 + seed(ray + 487) * 0.35);
+        let base = mesh.vertices.len() as u32;
+        for row in 0..=STEPS {
+            let t = row as f32 / STEPS as f32;
+            let pulse = smoothstep(1.0 - ((t - travel) / 0.28).abs());
+            let alpha = brightness * (1.0 - smoothstep(t)) * (0.6 + pulse * 0.4);
+            let center = origin + direction * (length * t);
+            let half_width = width * (1.0 - t * 0.6);
+            let color = rgba(255, 248, 216, alpha);
+            for (offset, tint) in [
+                (-half_width - feather, Color32::TRANSPARENT),
+                (-half_width, color),
+                (half_width, color),
+                (half_width + feather, Color32::TRANSPARENT),
+            ] {
+                mesh.colored_vertex(center + normal * offset, tint);
+            }
+        }
+        for row in 0..STEPS {
+            for band in 0..3 {
+                let a = base + row * 4 + band;
+                mesh.add_triangle(a, a + 1, a + 4);
+                mesh.add_triangle(a + 1, a + 5, a + 4);
+            }
+        }
+    }
+    c.painter.add(mesh);
+}
+
 fn pose<'a>(c: &Canvas<'a>, phase: f32, motion: f32) -> Canvas<'a> {
     let angle = -0.08 + 0.035 * (phase * TAU / 10.0).sin() * motion;
     Canvas {
@@ -222,10 +317,17 @@ pub(super) fn draw(c: &Canvas<'_>, snapshot: &TimerSnapshot, time: f32, reduced:
     wand.glow(
         CRYSTAL[0],
         CRYSTAL[1],
-        (23.0 + illumination * 17.0) * CRYSTAL_SCALE,
-        (23.0 + illumination * 17.0) * CRYSTAL_SCALE,
-        rgba(220, 194, 255, 0.12 + illumination * 0.34),
+        23.0 * CRYSTAL_SCALE,
+        23.0 * CRYSTAL_SCALE,
+        rgba(220, 194, 255, 0.12),
     );
+    if illumination > 0.0 {
+        crystal_bloom(
+            &wand,
+            [136.0, 152.0],
+            rgba(255, 245, 215, illumination * 0.55),
+        );
+    }
     layer(&wand, &texture, 0, Color32::WHITE);
     layer(&wand, &texture, 1, Color32::WHITE);
     wand.glow(
@@ -233,29 +335,19 @@ pub(super) fn draw(c: &Canvas<'_>, snapshot: &TimerSnapshot, time: f32, reduced:
         CRYSTAL[1] - 3.0 * CRYSTAL_SCALE,
         13.0 * CRYSTAL_SCALE,
         15.0 * CRYSTAL_SCALE,
-        rgba(255, 250, 255, 0.06 + breath * 0.05 + illumination * 0.55),
+        rgba(255, 250, 255, 0.06 + breath * 0.05),
     );
     // The crescent's foreground rim hides the base of the crystal's pedestal.
     layer(&wand, &texture, 2, Color32::WHITE);
     if let Some(elapsed) = finish.filter(|_| !reduced) {
         crescent_sheen(&wand, &texture, elapsed);
         if illumination > 0.0 {
-            let mut glints = Mesh::default();
-            glints.reserve_vertices(51);
-            glints.reserve_triangles(72);
-            for (x, y, radius) in [(-10.0, -8.0, 6.0), (10.0, 6.0, 4.5), (1.0, -16.0, 3.3)] {
-                spark(
-                    &mut glints,
-                    wand.point(
-                        CRYSTAL[0] + x * CRYSTAL_SCALE,
-                        CRYSTAL[1] + y * CRYSTAL_SCALE,
-                    ),
-                    radius * c.scale * CRYSTAL_SCALE,
-                    illumination,
-                    true,
-                );
-            }
-            c.painter.add(glints);
+            light_trails(&wand, elapsed, illumination);
+            crystal_bloom(
+                &wand,
+                [64.0, 70.0],
+                rgba(255, 250, 235, illumination * 0.98),
+            );
         }
     }
     if !reduced && snapshot.phase != TimerPhase::Idle && finish.is_none_or(|elapsed| elapsed < 3.4)

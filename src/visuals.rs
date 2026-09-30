@@ -441,7 +441,18 @@ fn draw_bomb(c: &Canvas<'_>, snapshot: &TimerSnapshot, time: f32) {
     static SPHERE: LazyLock<Mesh> = LazyLock::new(sphere_mesh);
     c.cached_mesh(&SPHERE);
     static SEAMS: LazyLock<Mesh> = LazyLock::new(bomb_seam_mesh);
-    c.cached_mesh(&SEAMS);
+    let mut seams = (*SEAMS).clone();
+    let feather = (c.scale * c.painter.ctx().pixels_per_point()).recip();
+    for strip in seams.vertices.as_chunks_mut::<4>().0 {
+        // Keep the edge fade one physical pixel wide, even at the tapered ends.
+        for (edge, inner) in [(0, 1), (3, 2)] {
+            strip[edge].pos = strip[inner].pos + (strip[edge].pos - strip[inner].pos) * feather;
+        }
+        for vertex in strip {
+            vertex.pos = c.point(vertex.pos.x, vertex.pos.y);
+        }
+    }
+    c.painter.add(seams);
     c.ring(160.0, 209.0, 91.0, 1.3, Color32::from_rgb(64, 70, 79));
 
     // Curved side walls carry the same shading down to their lower edges.
@@ -591,14 +602,14 @@ fn bomb_seam_mesh() -> Mesh {
                 let depth = (radius * cos_tilt * sin - latitude * sin_tilt).max(0.0);
                 let coverage = smoothstep(depth / (RADIUS * 0.4));
                 let normal = Vec2::new(sin_tilt * cos, sin).normalized();
-                let half_width = width * 0.5;
+                let half_width = width * 0.5 * coverage;
                 for (offset, tint) in [
-                    (-half_width - 0.5, Color32::TRANSPARENT),
+                    (-half_width - 1.0, Color32::TRANSPARENT),
                     (-half_width, color.gamma_multiply(coverage)),
                     (half_width, color.gamma_multiply(coverage)),
-                    (half_width + 0.5, Color32::TRANSPARENT),
+                    (half_width + 1.0, Color32::TRANSPARENT),
                 ] {
-                    mesh.colored_vertex(center + normal * (offset * coverage), tint);
+                    mesh.colored_vertex(center + normal * offset, tint);
                 }
             }
             for i in 0..STEPS {
@@ -1525,7 +1536,7 @@ fn rocket_body(c: &Canvas<'_>, snapshot: &TimerSnapshot, time: f32, engine: bool
         1.3,
     );
     c.curve(
-        [[138.0, 62.0], [151.0, 68.0], [168.0, 70.0], [180.0, 64.0]],
+        [[138.0, 63.0], [151.0, 69.0], [169.0, 69.0], [182.0, 63.0]],
         1.5,
         Color32::from_rgb(158, 157, 141),
     );
