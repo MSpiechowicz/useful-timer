@@ -87,12 +87,15 @@ impl WidgetWindow {
         zoom_factor: f32,
     ) -> Self {
         let size = widget_size(view.settings.size);
-        let suggested = view
-            .position
-            .map(|position| egui::pos2(position.x, position.y))
-            .or(root_position);
-        let initial_position =
-            suggested.map(|position| clamp_position(position, size, monitors, zoom_factor));
+        let initial_position = match view.position {
+            Some(position) => Some(clamp_position(
+                egui::pos2(position.x, position.y),
+                size,
+                monitors,
+                zoom_factor,
+            )),
+            None => bottom_left_position(size, monitors, root_position, zoom_factor),
+        };
         let builder = egui::ViewportBuilder::default()
             .with_title(widget_title(view.id, &view.settings))
             .with_app_id("useful-timer")
@@ -755,8 +758,7 @@ impl UsefulTimerApp {
         let root_pixels_per_point = ctx.pixels_per_point();
         let root_position = ctx.input(|input| {
             input.viewport().outer_rect.map(|rect| {
-                let position =
-                    capture_position(rect.min + egui::vec2(36.0, 60.0), root_pixels_per_point);
+                let position = capture_position(rect.center(), root_pixels_per_point);
                 egui::pos2(position.x, position.y)
             })
         });
@@ -1239,6 +1241,30 @@ fn take_initial_position(
     (position, initial.applied_frame == Some(frame))
 }
 
+fn bottom_left_position(
+    size: Vec2,
+    monitors: &[Monitor],
+    root_position: Option<egui::Pos2>,
+    zoom_factor: f32,
+) -> Option<egui::Pos2> {
+    let monitor = match root_position {
+        Some(position) => monitors.iter().min_by(|left, right| {
+            left.bounds
+                .distance_sq_to_pos(position)
+                .total_cmp(&right.bounds.distance_sq_to_pos(position))
+        }),
+        None => monitors.first(),
+    }?;
+    let pixels_per_point = monitor.scale_factor * zoom_factor;
+    let physical_size = size * pixels_per_point;
+    let margin = 16.0 * pixels_per_point;
+    let maximum = (monitor.bounds.max - physical_size).max(monitor.bounds.min);
+    Some(egui::pos2(
+        (monitor.bounds.min.x + margin).min(maximum.x),
+        (maximum.y - margin).max(monitor.bounds.min.y),
+    ))
+}
+
 fn clamp_position(
     position: egui::Pos2,
     size: Vec2,
@@ -1279,6 +1305,45 @@ mod tests {
                 scale_factor: 2.0,
             },
         ]
+    }
+
+    #[test]
+    fn new_widget_opens_at_bottom_left_of_control_panel_monitor() {
+        let monitors = mixed_dpi_monitors();
+        let timer = Timer::new(1, TimerSettings::default()).unwrap();
+        let view = TimerView::from_timer(&timer, Instant::now());
+        let window = WidgetWindow::new(&view, &monitors, Some(egui::pos2(2600.0, 500.0)), 1.25);
+        let position = take_initial_position(&window.initial_position, 2.5, 0)
+            .0
+            .unwrap()
+            * 2.5;
+        let size = widget_size(view.settings.size) * 2.5;
+        assert_eq!(position.x, monitors[1].bounds.min.x + 40.0);
+        assert_eq!(position.y + size.y, monitors[1].bounds.max.y - 40.0);
+        assert!(
+            monitors[1]
+                .bounds
+                .contains_rect(egui::Rect::from_min_size(position, size,))
+        );
+    }
+
+    #[test]
+    fn new_widget_uses_negative_monitor_origin_without_control_panel_position() {
+        let monitors = [Monitor {
+            bounds: egui::Rect::from_min_size(
+                egui::pos2(-1920.0, -1080.0),
+                egui::vec2(1920.0, 1080.0),
+            ),
+            scale_factor: 1.0,
+        }];
+        let timer = Timer::new(1, TimerSettings::default()).unwrap();
+        let view = TimerView::from_timer(&timer, Instant::now());
+        let window = WidgetWindow::new(&view, &monitors, None, 1.0);
+        let position = take_initial_position(&window.initial_position, 1.0, 0)
+            .0
+            .unwrap();
+        assert_eq!(position.x, -1904.0);
+        assert_eq!(position.y + widget_size(view.settings.size).y, -16.0);
     }
 
     fn captured_view(position_in_points: egui::Pos2, pixels_per_point: f32) -> TimerView {

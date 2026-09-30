@@ -1,0 +1,159 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Check out complete release history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.10.0'
+          cache: npm
+
+      - name: Install locked release tooling
+        run: npm ci --ignore-scripts
+
+      - name: Determine next semantic version without publishing
+        id: release
+        run: node .github/release/plan.mjs
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.version != ''
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: macos-14
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    env:
+      RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+      RELEASE_TARGET: ${{ matrix.target }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.10.0'
+
+      - name: Set Cargo package and lockfile release version
+        run: >-
+          node --input-type=module -e
+          'import { prepare } from "./.github/release/cargo.mjs";
+          await prepare({}, { nextRelease: { version: process.env.RELEASE_VERSION } });'
+
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libasound2-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libxkbcommon-dev libxkbcommon-x11-dev libgl-dev
+
+      - name: Install Rust 1.95.0 and tools
+        shell: bash
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy --target "$RELEASE_TARGET"
+          rustup default 1.95.0
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Check compilation
+        run: cargo check --locked --target ${{ matrix.target }}
+
+      - name: Run deterministic tests
+        run: cargo test --locked --target ${{ matrix.target }}
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets --locked --target ${{ matrix.target }} -- -D warnings
+
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package Linux and macOS binaries
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist package
+          cp "target/$RELEASE_TARGET/release/useful-timer" LICENSE README.md package/
+          tar -czf "dist/useful-timer-$RELEASE_VERSION-$RELEASE_TARGET.tar.gz" -C package useful-timer LICENSE README.md
+
+      - name: Package Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist, package | Out-Null
+          Copy-Item "target/$env:RELEASE_TARGET/release/useful-timer.exe", LICENSE, README.md package/
+          Compress-Archive -Path package/* -DestinationPath "dist/useful-timer-$env:RELEASE_VERSION-$env:RELEASE_TARGET.zip"
+
+      - name: Upload release archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [plan, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+      RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - name: Check out complete release history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+
+      - name: Install Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.10.0'
+          cache: npm
+
+      - name: Install locked release tooling
+        run: npm ci --ignore-scripts
+
+      - name: Download all release archives
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish version, changelog, tag, and GitHub release
+        run: npm run release
