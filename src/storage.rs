@@ -216,6 +216,7 @@ mod tests {
                 size: 240.0,
                 volume: 0.3,
                 muted: true,
+                reduced_motion: true,
             },
         )
         .unwrap();

@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="2048" viewBox="0 0 640 640">
+  <!-- Original Useful Timer artwork. Four 320-point layers: body, crystal, foreground crescent, light. -->
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2=".85" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#fff7c4"/><stop offset=".2" stop-color="#f8d97a"/><stop offset=".46" stop-color="#ffe998"/><stop offset=".68" stop-color="#e8ad3c"/><stop offset=".87" stop-color="#b37526"/><stop offset="1" stop-color="#ffdf86"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" x2="1"><stop stop-color="#8d4b22"/><stop offset=".23" stop-color="#f9d27d"/><stop offset=".46" stop-color="#fff4ba"/><stop offset=".72" stop-color="#e5ab44"/><stop offset="1" stop-color="#a76526"/></linearGradient>
+    <linearGradient id="pink" x1="0" x2="1"><stop stop-color="#9c346b"/><stop offset=".16" stop-color="#db649b"/><stop offset=".35" stop-color="#ffd0e2"/><stop offset=".49" stop-color="#fca7cf"/><stop offset=".8" stop-color="#e867a6"/><stop offset="1" stop-color="#9b396e"/></linearGradient>
+    <radialGradient id="pearl" cx=".32" cy=".22" r=".8"><stop stop-color="#fffefa"/><stop offset=".35" stop-color="#f4efff"/><stop offset=".66" stop-color="#d6cff0"/><stop offset="1" stop-color="#9995c7"/></radialGradient>
+    <radialGradient id="red" cx=".3" cy=".25"><stop stop-color="#ffe5ed"/><stop offset=".3" stop-color="#fd82a6"/><stop offset=".68" stop-color="#c63262"/><stop offset="1" stop-color="#701d48"/></radialGradient>
+    <radialGradient id="green" cx=".3" cy=".25"><stop stop-color="#f1ffe4"/><stop offset=".35" stop-color="#b3e7b2"/><stop offset="1" stop-color="#398a72"/></radialGradient>
+    <radialGradient id="blue" cx=".3" cy=".25"><stop stop-color="#fbfbff"/><stop offset=".35" stop-color="#a8d2ff"/><stop offset="1" stop-color="#5a65a8"/></radialGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fffde7"/><stop offset=".55" stop-color="#fff9db" stop-opacity=".75"/><stop offset="1" stop-color="#fff9db" stop-opacity="0"/></linearGradient>
+    <path id="moon" d="M160 32 C211 40 235 77 219 109 C201 144 143 146 110 107 C134 126 164 125 184 104 C204 82 197 49 160 32Z"/>
+    <path id="grip" d="M146 158 Q151 176 153 193 Q154 214 148 229 Q160 237 172 229 Q167 211 168 192 Q169 175 174 158Z"/>
+    <circle id="gem" cx="160" cy="103" r="16"/>
+    <clipPath id="gem-clip"><use href="#gem"/></clipPath>
+    <clipPath id="grip-clip"><use href="#grip"/></clipPath>
+    <clipPath id="moon-clip"><use href="#moon"/></clipPath>
+  </defs>
+  <g id="body" stroke-linejoin="round" stroke-linecap="round">
+    <use href="#grip" fill="url(#pink)" stroke="#743050" stroke-width="1.1"/>
+    <g clip-path="url(#grip-clip)" fill="none">
+      <path d="M145 186 Q161 198 176 196 M145 205 Q161 217 178 214" stroke="#fff1f7" stroke-width="2" opacity=".43"/>
+      <path d="M149 189 Q160 199 173 199 M150 208 Q161 218 172 217" stroke="#b44683" stroke-width=".65" opacity=".45"/>
+      <path d="M153 176 Q158 194 156 220" stroke="#fff9fc" stroke-width="1.1" opacity=".65"/>
+    </g>
+    <path d="M149 226 Q160 230 171 226 L173 231 Q160 239 147 231Z" fill="url(#rim)" stroke="#996022" stroke-width=".8"/>
+    <path d="M151 233 Q160 246 169 233 Q160 237 151 233Z" fill="url(#gold)" stroke="#a96932" stroke-width=".9"/>
+    <path d="M155 223 Q158 220 160 224 Q162 220 165 223" fill="none" stroke="#fff0b4" stroke-width="1.2"/>
+    <circle cx="160" cy="225" r="2.3" fill="url(#red)" stroke="#ffe1a0" stroke-width=".7"/>
+    <path d="M160 169 L162 174 L168 174.5 L163.5 178 L165 183 L160 180 L155 183 L156.5 178 L152 174.5 L158 174Z" fill="#f9c0df" stroke="#b36b63" stroke-width=".8"/>
+    <path d="M149 121 Q160 125 171 121 L174 142 Q160 149 146 142Z" fill="url(#pink)" stroke="#8c3b65" stroke-width=".7"/>
+    <g transform="translate(160 138) scale(.75) translate(-160 -138)">
+      <path d="M124 125 C135 120 147 123 155 135 L151 147 C144 144 138 139 132 137 C134 132 130 128 124 125Z M196 125 C185 120 173 123 165 135 L169 147 C176 144 182 139 188 137 C186 132 190 128 196 125Z" fill="url(#gold)" stroke="#996025" stroke-width=".9"/>
+      <path d="M124 125 Q134 128 134 136 L132 137 C134 132 130 128 124 125Z M196 125 Q186 128 186 136 L188 137 C186 132 190 128 196 125Z" fill="#bd8537"/>
+      <path d="M135 128 C143 128 150 134 154 141 C146 137 143 132 135 128Z M185 128 C177 128 170 134 166 141 C174 137 177 132 185 128Z" fill="#ac722e" opacity=".45"/>
+      <path d="M127 125 C137 122 146 125 151 131 M193 125 C183 122 174 125 169 131" fill="none" stroke="#fff1b1" stroke-width="1.35"/>
+      <path d="M136 131 Q143 134 148 140 M184 131 Q177 134 172 140" fill="none" stroke="#ffe6a0" stroke-width=".75"/>
+    </g>
+    <ellipse cx="160" cy="150" rx="18.5" ry="20" fill="url(#pink)" stroke="#8c3b65" stroke-width="1"/>
+    <ellipse cx="160" cy="149" rx="15.8" ry="17" fill="url(#gold)" stroke="#895829" stroke-width=".8"/>
+    <ellipse cx="160" cy="149" rx="12.6" ry="13.5" fill="#b77936" stroke="#fff0a9" stroke-width="1"/>
+    <ellipse cx="160" cy="147.5" rx="10.6" ry="11.2" fill="#4e304a" stroke="#724136" stroke-width=".6"/>
+    <circle cx="160" cy="142.5" r="4.2" fill="url(#red)" stroke="#f6cc84" stroke-width=".55"/>
+    <circle cx="155.5" cy="150.5" r="3.8" fill="url(#green)" stroke="#f6cc84" stroke-width=".55"/>
+    <circle cx="164.5" cy="150.5" r="3.8" fill="url(#blue)" stroke="#f6cc84" stroke-width=".55"/>
+    <g fill="url(#rim)" stroke="#ac7330" stroke-width=".65">
+      <circle cx="160" cy="131" r="3.4"/><circle cx="152.5" cy="134" r="2.8"/><circle cx="167.5" cy="134" r="2.8"/>
+      <circle cx="144.4" cy="145" r="2.8"/><circle cx="175.6" cy="145" r="2.8"/>
+      <circle cx="149.5" cy="160" r="2.8"/><circle cx="170.5" cy="160" r="2.8"/><circle cx="160" cy="166" r="2.8"/>
+    </g>
+    <path d="M150 114 L154 106 Q160 104 166 106 L170 114Z" fill="url(#gold)" stroke="#ac7330" stroke-width=".55"/>
+  </g>
+  <g id="crystal" transform="translate(320 -12) translate(160 119) scale(.75) translate(-160 -119)">
+    <use href="#gem" fill="url(#pearl)" stroke="#bbb0d5" stroke-width=".75"/>
+    <g clip-path="url(#gem-clip)" stroke="#fff9ff" stroke-width=".25" stroke-opacity=".55">
+      <path d="M144 99 L151 91 L154 101Z" fill="#fffef7"/>
+      <path d="M151 91 L160 85 L166 94 L154 101Z" fill="#e5d7f5"/>
+      <path d="M160 85 L171 89 L166 94Z" fill="#fffefa"/>
+      <path d="M171 89 L176 99 L166 94Z" fill="#cec5eb"/>
+      <path d="M144 99 L154 101 L148 109Z" fill="#cbc4eb"/>
+      <path d="M154 101 L166 94 L164 105Z" fill="#fffafc"/>
+      <path d="M166 94 L176 99 L164 105Z" fill="#e7f5ff"/>
+      <path d="M176 99 L175 111 L164 105Z" fill="#b9b9df"/>
+      <path d="M148 109 L154 101 L158 113Z" fill="#eef7ff"/>
+      <path d="M154 101 L164 105 L158 113Z" fill="#e0c4e9"/>
+      <path d="M164 105 L175 111 L167 117 L158 113Z" fill="#f9f0ff"/>
+      <path d="M148 109 L158 113 L153 120Z" fill="#b9a6d7"/>
+      <path d="M158 113 L167 117 L153 120Z" fill="#d6dbf5"/>
+    </g>
+    <path d="M147 100 Q148 91 156 89" fill="none" stroke="#fffefd" stroke-width="1.7" stroke-linecap="round"/>
+    <path d="M169 108 L171 103" fill="none" stroke="#fffaff" stroke-width="1.2" stroke-linecap="round"/>
+  </g>
+  <g id="crescent-front" transform="translate(0 320)" stroke-linejoin="round" stroke-linecap="round">
+    <g transform="translate(0 -8)">
+    <use href="#moon" fill="url(#gold)" stroke="#99672c" stroke-width=".9"/>
+    <g clip-path="url(#moon-clip)">
+    <path d="M165 35 C205 44 229 77 214 107 C195 137 150 138 122 117" fill="none" stroke="#fff0ac" stroke-width="1.3" opacity=".83"/>
+    <path d="M112 109 C136 127 165 126 185 105 C205 83 199 50 162 34" fill="none" stroke="#fff7c7" stroke-width="1"/>
+    <path d="M188 49 C202 59 212 72 213 82" fill="none" stroke="#fff0ac" stroke-width="1.1" opacity=".55"/>
+    <g fill="none" stroke="#a7742c" stroke-width=".9" opacity=".78">
+      <path transform="translate(208 100) scale(.75) translate(-208 -100)" d="M214 94 Q203 91 202 101 Q202 108 208 105 Q212 101 206 100"/>
+      <path transform="translate(200 113) scale(.75) translate(-200 -113)" d="M209 108 Q203 118 195 116 Q189 113 194 109 Q199 107 199 112"/>
+      <path transform="translate(182 122) scale(.75) translate(-182 -122)" d="M191 120 Q181 128 176 122 Q174 117 179 117 Q183 118 180 121"/>
+      <path transform="translate(162 126) scale(.75) translate(-162 -126)" d="M173 127 Q163 132 158 127 Q154 123 158 122 Q163 121 161 126"/>
+      <path transform="translate(147 124.5) scale(.75) translate(-147 -126)" d="M154 129 Q145 130 142 126 Q141 122 145 124"/>
+    </g>
+    <g fill="none" stroke="#fff1b0" stroke-width=".55" opacity=".8">
+      <path transform="translate(208 100) scale(.75) translate(-208 -100)" d="M213 93 Q202 90 201 100"/>
+      <path transform="translate(200 113) scale(.75) translate(-200 -113)" d="M208 107 Q202 117 194 115"/>
+      <path transform="translate(182 122) scale(.75) translate(-182 -122)" d="M190 119 Q180 127 175 121"/>
+      <path transform="translate(162 126) scale(.75) translate(-162 -126)" d="M172 126 Q162 131 157 126"/>
+    </g>
+    </g>
+    </g>
+  </g>
+  <g id="illumination" transform="translate(320 320)">
+    <use href="#moon" transform="translate(0 -8)" fill="url(#shine)"/>
+  </g>
+</svg>

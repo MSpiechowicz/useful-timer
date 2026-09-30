@@ -9,16 +9,32 @@ pub enum TimerStyle {
     Bomb,
     Hourglass,
     Rocket,
+    CodeRain,
+    MachineCore,
+    DragonOrb,
+    CrescentWand,
 }
 
 impl TimerStyle {
-    pub const ALL: [Self; 3] = [Self::Bomb, Self::Hourglass, Self::Rocket];
+    pub const ALL: [Self; 7] = [
+        Self::Bomb,
+        Self::Hourglass,
+        Self::Rocket,
+        Self::CodeRain,
+        Self::MachineCore,
+        Self::DragonOrb,
+        Self::CrescentWand,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Bomb => "Bomb",
             Self::Hourglass => "Hourglass",
             Self::Rocket => "Rocket",
+            Self::CodeRain => "Code Rain",
+            Self::MachineCore => "Machine Core",
+            Self::DragonOrb => "Dragon Orb",
+            Self::CrescentWand => "Crescent Wand",
         }
     }
 }
@@ -33,6 +49,8 @@ pub struct TimerSettings {
     pub volume: f32,
     #[serde(default)]
     pub muted: bool,
+    #[serde(default)]
+    pub reduced_motion: bool,
 }
 
 impl Default for TimerSettings {
@@ -44,6 +62,7 @@ impl Default for TimerSettings {
             size: 300.0,
             volume: 0.6,
             muted: false,
+            reduced_motion: false,
         }
     }
 }
@@ -101,6 +120,8 @@ pub struct TimerSnapshot {
     pub remaining: Duration,
     pub remaining_fraction: f32,
     pub effect_elapsed: Option<Duration>,
+    /// Running time only: unaffected by pauses or remaining-time edits.
+    pub animation_elapsed: Duration,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -136,6 +157,7 @@ pub struct Timer {
     settings: TimerSettings,
     runtime: Runtime,
     run: u64,
+    elapsed_before_segment: Duration,
 }
 
 impl Timer {
@@ -148,6 +170,7 @@ impl Timer {
             settings,
             runtime: Runtime::Idle,
             run: 0,
+            elapsed_before_segment: Duration::ZERO,
         })
     }
 
@@ -179,11 +202,13 @@ impl Timer {
         match action {
             TimerAction::Reset => {
                 self.runtime = Runtime::Idle;
+                self.elapsed_before_segment = Duration::ZERO;
                 return None;
             }
             TimerAction::RestoreDefaults => {
                 self.settings = TimerSettings::default();
                 self.runtime = Runtime::Idle;
+                self.elapsed_before_segment = Duration::ZERO;
                 return None;
             }
             _ => {}
@@ -209,6 +234,10 @@ impl Timer {
                 _ => unreachable!(),
             }
             .min(Duration::from_secs(86_400));
+            if let Runtime::Running { started, remaining } = self.runtime {
+                self.elapsed_before_segment +=
+                    now.saturating_duration_since(started).min(remaining);
+            }
             self.runtime = if remaining.is_zero() || matches!(self.runtime, Runtime::Running { .. })
             {
                 Runtime::Running {
@@ -231,6 +260,8 @@ impl Timer {
                 }
             }
             (TimerAction::Pause, Runtime::Running { started, remaining }) => {
+                self.elapsed_before_segment +=
+                    now.saturating_duration_since(started).min(remaining);
                 self.runtime = Runtime::Paused {
                     remaining: remaining.saturating_sub(now.saturating_duration_since(started)),
                 };
@@ -255,6 +286,7 @@ impl Timer {
         if settings.duration != self.settings.duration {
             self.settings = settings;
             self.runtime = Runtime::Idle;
+            self.elapsed_before_segment = Duration::ZERO;
             return Ok(None);
         }
 
@@ -295,6 +327,14 @@ impl Timer {
             remaining_fraction: (remaining.as_secs_f64() / self.settings.duration.as_secs_f64())
                 .clamp(0.0, 1.0) as f32,
             effect_elapsed,
+            animation_elapsed: self.elapsed_before_segment
+                + match self.runtime {
+                    Runtime::Running { started, remaining } => {
+                        now.saturating_duration_since(started).min(remaining)
+                    }
+                    Runtime::Finished { remaining, .. } => remaining,
+                    Runtime::Idle | Runtime::Paused { .. } => Duration::ZERO,
+                },
         }
     }
 }
@@ -319,6 +359,62 @@ mod tests {
             },
         )
         .unwrap()
+    }
+
+    #[test]
+    fn animation_clock_preserves_pose_across_pause_and_time_edits() {
+        let now = Instant::now();
+        let at = |seconds| now + Duration::from_secs(seconds);
+        let mut timer = timer(20);
+        timer.apply(TimerAction::Start, now);
+        timer.apply(TimerAction::Pause, at(3));
+        assert_eq!(
+            timer.snapshot(at(100)).animation_elapsed,
+            Duration::from_secs(3)
+        );
+        timer.apply(TimerAction::AdjustRemaining(30), at(100));
+        assert_eq!(
+            timer.snapshot(at(110)).animation_elapsed,
+            Duration::from_secs(3)
+        );
+        timer.apply(TimerAction::Resume, at(110));
+        assert_eq!(
+            timer.snapshot(at(112)).animation_elapsed,
+            Duration::from_secs(5)
+        );
+        timer.apply(TimerAction::SetRemaining(Duration::from_secs(4)), at(112));
+        assert_eq!(
+            timer.snapshot(at(112)).animation_elapsed,
+            Duration::from_secs(5)
+        );
+        let mut settings = timer.settings().clone();
+        settings.style = TimerStyle::CodeRain;
+        settings.reduced_motion = true;
+        timer.update_settings(settings, at(113)).unwrap();
+        assert_eq!(
+            timer.snapshot(at(113)).animation_elapsed,
+            Duration::from_secs(6)
+        );
+        assert_eq!(
+            timer.snapshot(at(120)).animation_elapsed,
+            Duration::from_secs(9)
+        );
+        assert_eq!(
+            timer.snapshot(at(120)).effect_elapsed,
+            Some(Duration::from_secs(4))
+        );
+        timer.advance(at(120)).unwrap();
+        assert_eq!(
+            timer.snapshot(at(130)).animation_elapsed,
+            Duration::from_secs(9)
+        );
+        timer.apply(TimerAction::Reset, at(130));
+        assert_eq!(timer.snapshot(at(130)).animation_elapsed, Duration::ZERO);
+        timer.apply(TimerAction::Start, at(130));
+        let mut settings = timer.settings().clone();
+        settings.duration = Duration::from_secs(10);
+        timer.update_settings(settings, at(132)).unwrap();
+        assert_eq!(timer.snapshot(at(132)).animation_elapsed, Duration::ZERO);
     }
 
     #[test]

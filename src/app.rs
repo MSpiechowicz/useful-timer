@@ -160,6 +160,70 @@ impl TimeInput {
         Duration::from_secs(self.hours * 3600 + self.minutes * 60 + self.seconds)
     }
 
+    fn component(ui: &mut egui::Ui, value: &mut u64, maximum: u64) -> egui::Response {
+        let id = ui.next_auto_id();
+        let buffer_id = id.with("fixed-time-input");
+        let buffer = ui.data_mut(|data| data.remove_temp::<String>(buffer_id));
+        if !ui.memory(|memory| memory.has_focus(id)) && buffer.is_none() {
+            return ui.add(
+                egui::DragValue::new(value)
+                    .range(0..=maximum)
+                    .speed(1.0)
+                    .update_while_editing(false),
+            );
+        }
+
+        let newly_editing = buffer.is_none();
+        let mut text = buffer.unwrap_or_else(|| value.to_string());
+        let step = ui.input_mut(|input| {
+            input.count_and_consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp) as i64
+                - input.count_and_consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown) as i64
+        });
+        if step != 0 {
+            *value = value.saturating_add_signed(step).min(maximum);
+            text = value.to_string();
+        }
+        let padding = ui.spacing().button_padding;
+        let mut output = egui::TextEdit::singleline(&mut text)
+            .id(id)
+            .desired_width(64.0 - 2.0 * padding.x)
+            .min_size(egui::vec2(0.0, 36.0 - 2.0 * padding.y))
+            .margin(padding)
+            .font(ui.style().drag_value_text_style.clone())
+            .horizontal_align(egui::Align::Center)
+            .vertical_align(egui::Align::Center)
+            .clip_text(true)
+            .show(ui);
+        if newly_editing {
+            output
+                .state
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::two(
+                    egui::text::CCursor::default(),
+                    egui::text::CCursor::new(text.chars().count()),
+                )));
+            output.state.store(ui.ctx(), id);
+        }
+        let cancelled = ui.input(|input| input.key_pressed(egui::Key::Escape));
+        if cancelled {
+            output.response.surrender_focus();
+        }
+        if output.response.has_focus() {
+            ui.data_mut(|data| data.insert_temp(buffer_id, text));
+        } else if !cancelled {
+            // Match DragValue's parser and commit-on-blur behavior.
+            let normalized: String = text
+                .chars()
+                .filter(|character| !character.is_whitespace())
+                .map(|character| if character == '−' { '-' } else { character })
+                .collect();
+            if let Ok(parsed) = normalized.parse::<f64>() {
+                *value = parsed.clamp(0.0, maximum as f64) as u64;
+            }
+        }
+        output.response.response
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui) -> (bool, bool) {
         let mut changed = false;
         let mut editing = false;
@@ -171,16 +235,13 @@ impl TimeInput {
             ] {
                 ui.vertical(|ui| {
                     let label = ui.label(RichText::new(label).small().weak());
+                    let previous = *value;
                     let response = ui
-                        .add_sized(
-                            [64.0, 36.0],
-                            egui::DragValue::new(value)
-                                .range(0..=maximum)
-                                .speed(1.0)
-                                .update_while_editing(false),
-                        )
+                        .add_sized([64.0, 36.0], |ui: &mut egui::Ui| {
+                            Self::component(ui, value, maximum)
+                        })
                         .labelled_by(label.id);
-                    changed |= response.changed();
+                    changed |= *value != previous;
                     editing |= response.has_focus();
                 });
             }
@@ -205,7 +266,6 @@ pub struct UsefulTimerApp {
     operation_warning: Option<String>,
     completions: Vec<CompletionEvent>,
     repaint_ids: Vec<(TimerId, bool)>,
-    started: Instant,
     theme: Theme,
     logo: egui::TextureHandle,
     updater: Updater,
@@ -292,7 +352,6 @@ impl UsefulTimerApp {
             operation_warning: None,
             completions: Vec::with_capacity(MAX_TIMERS),
             repaint_ids: Vec::with_capacity(MAX_TIMERS),
-            started: Instant::now(),
             theme,
             logo: branding::texture(&context.egui_ctx),
             updater: Updater::new(&context.egui_ctx),
@@ -699,7 +758,10 @@ impl UsefulTimerApp {
     fn artwork_picker(&mut self, ui: &mut egui::Ui) -> bool {
         let colors = self.theme.palette();
         ui.label(RichText::new("Desktop artwork").size(17.0).strong());
-        let width = (ui.available_width() - 20.0) / 3.0;
+        let columns = ((ui.available_width() + 10.0) / 170.0)
+            .floor()
+            .clamp(1.0, 4.0) as usize;
+        let width = (ui.available_width() - 10.0 * (columns - 1) as f32) / columns as f32;
         let mut changed = false;
         let mut settings = self.draft.clone();
         let preview = TimerSnapshot {
@@ -707,56 +769,63 @@ impl UsefulTimerApp {
             remaining: self.duration_input.duration(),
             remaining_fraction: 1.0,
             effect_elapsed: None,
+            animation_elapsed: Duration::ZERO,
         };
-        ui.horizontal(|ui| {
-            for style in TimerStyle::ALL {
-                let selected = self.draft.style == style;
-                let response = ui.add_sized(
-                    [width, 148.0],
-                    egui::Button::new("")
-                        .fill(if selected {
-                            colors.selected
-                        } else {
-                            colors.surface
-                        })
-                        .corner_radius(12)
-                        .stroke(egui::Stroke::new(
-                            1.0,
-                            if selected {
-                                colors.accent
+        egui::Grid::new("artwork-styles")
+            .num_columns(columns)
+            .spacing(egui::vec2(10.0, 10.0))
+            .show(ui, |ui| {
+                for (index, style) in TimerStyle::ALL.into_iter().enumerate() {
+                    let selected = self.draft.style == style;
+                    let response = ui.add_sized(
+                        [width, 148.0],
+                        egui::Button::new("")
+                            .fill(if selected {
+                                colors.selected
                             } else {
-                                colors.border
-                            },
-                        )),
-                );
-                response.widget_info(|| {
-                    egui::WidgetInfo::selected(
-                        egui::WidgetType::SelectableLabel,
-                        true,
-                        selected,
+                                colors.surface
+                            })
+                            .corner_radius(12)
+                            .stroke(egui::Stroke::new(
+                                1.0,
+                                if selected {
+                                    colors.accent
+                                } else {
+                                    colors.border
+                                },
+                            )),
+                    );
+                    response.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::WidgetType::SelectableLabel,
+                            true,
+                            selected,
+                            style.label(),
+                        )
+                    });
+                    let rect = response.rect;
+                    let artwork = egui::Rect::from_center_size(
+                        egui::pos2(rect.center().x, rect.top() + 57.0),
+                        Vec2::splat(96.0_f32.min(width - 8.0)),
+                    );
+                    settings.style = style;
+                    visuals::draw_timer(ui.painter(), artwork, &settings, &preview);
+                    ui.painter().text(
+                        egui::pos2(rect.center().x, rect.bottom() - 20.0),
+                        egui::Align2::CENTER_CENTER,
                         style.label(),
-                    )
-                });
-                let rect = response.rect;
-                let artwork = egui::Rect::from_center_size(
-                    egui::pos2(rect.center().x, rect.top() + 57.0),
-                    Vec2::splat(96.0_f32.min(width - 8.0)),
-                );
-                settings.style = style;
-                visuals::draw_timer(ui.painter(), artwork, &settings, &preview, 0.0);
-                ui.painter().text(
-                    egui::pos2(rect.center().x, rect.bottom() - 20.0),
-                    egui::Align2::CENTER_CENTER,
-                    style.label(),
-                    egui::FontId::proportional(14.0),
-                    if selected { colors.accent } else { colors.text },
-                );
-                if response.clicked() && !selected {
-                    self.draft.style = style;
-                    changed = true;
+                        egui::FontId::proportional(14.0),
+                        if selected { colors.accent } else { colors.text },
+                    );
+                    if response.clicked() && !selected {
+                        self.draft.style = style;
+                        changed = true;
+                    }
+                    if (index + 1) % columns == 0 {
+                        ui.end_row();
+                    }
                 }
-            }
-        });
+            });
         changed
     }
 
@@ -789,17 +858,25 @@ impl UsefulTimerApp {
     fn widget_settings(&mut self, ui: &mut egui::Ui) -> bool {
         let colors = self.theme.palette();
         ui.label(RichText::new("Widget").size(17.0).strong());
-        ui.horizontal(|ui| {
-            let label = ui.label(RichText::new("Size").color(colors.muted));
-            ui.add(
-                egui::Slider::new(&mut self.draft.size, 220.0..=460.0)
-                    .suffix(" px")
-                    .integer(),
+        let mut changed = ui
+            .horizontal(|ui| {
+                let label = ui.label(RichText::new("Size").color(colors.muted));
+                ui.add(
+                    egui::Slider::new(&mut self.draft.size, 220.0..=460.0)
+                        .suffix(" px")
+                        .integer(),
+                )
+                .labelled_by(label.id)
+                .changed()
+            })
+            .inner;
+        changed |= ui
+            .checkbox(&mut self.draft.reduced_motion, "Reduced motion")
+            .on_hover_text(
+                "Keep progress and time visible without ambient motion or completion bursts",
             )
-            .labelled_by(label.id)
-            .changed()
-        })
-        .inner
+            .changed();
+        changed
     }
 
     fn sound_settings(&mut self, ui: &mut egui::Ui) -> bool {
@@ -936,9 +1013,8 @@ impl UsefulTimerApp {
             let initial_position = Arc::clone(&window.initial_position);
             let shared = Arc::clone(&self.shared);
             let id = view.id;
-            let started = self.started;
             ctx.show_viewport_deferred(window.viewport_id, builder, move |ui, _class| {
-                widget_ui(ui, id, &shared, &initial_position, started);
+                widget_ui(ui, id, &shared, &initial_position);
             });
         }
     }
@@ -1190,7 +1266,6 @@ fn widget_ui(
     id: TimerId,
     shared: &Arc<Mutex<SharedState>>,
     initial_position: &Mutex<InitialPosition>,
-    started: Instant,
 ) {
     let ctx = ui.ctx().clone();
     if ctx.input(|input| input.viewport().close_requested()) {
@@ -1258,18 +1333,16 @@ fn widget_ui(
             ui.add_space(WIDGET_TITLE_HEIGHT);
             let (rect, response) =
                 ui.allocate_exact_size(Vec2::splat(width), egui::Sense::click_and_drag());
-            visuals::draw_timer(
-                ui.painter(),
-                rect,
-                &view.settings,
-                &view.snapshot,
-                started.elapsed().as_secs_f64(),
-            );
+            visuals::draw_timer(ui.painter(), rect, &view.settings, &view.snapshot);
             // Keep a 12-point gap to each style's upper silhouette at every widget size.
             let artwork_top = match view.settings.style {
                 TimerStyle::Bomb => 34.0, // Full fuse crest, including its thick stroke.
                 TimerStyle::Hourglass => 45.0,
                 TimerStyle::Rocket => 36.0,
+                TimerStyle::CodeRain => 37.0,
+                TimerStyle::MachineCore => 33.0,
+                TimerStyle::DragonOrb => 54.0,
+                TimerStyle::CrescentWand => 23.0,
             };
             let badge = egui::Rect::from_center_size(
                 egui::pos2(
@@ -1303,6 +1376,10 @@ fn widget_ui(
                 TimerStyle::Bomb => Color32::from_rgb(255, 174, 91),
                 TimerStyle::Hourglass => Color32::from_rgb(241, 207, 134),
                 TimerStyle::Rocket => Color32::from_rgb(126, 217, 230),
+                TimerStyle::CodeRain => Color32::from_rgb(103, 255, 174),
+                TimerStyle::MachineCore => Color32::from_rgb(255, 94, 83),
+                TimerStyle::DragonOrb => Color32::from_rgb(255, 190, 76),
+                TimerStyle::CrescentWand => Color32::from_rgb(174, 224, 255),
             };
             ui.painter().circle_filled(
                 egui::pos2(badge.left() + 13.0, badge.center().y),
@@ -1348,7 +1425,7 @@ fn widget_ui(
                 ctx.send_viewport_cmd(ViewportCommand::StartDrag);
             }
         });
-    if visuals::needs_animation(view.settings.style, &view.snapshot) {
+    if visuals::needs_animation(&view.settings, &view.snapshot) {
         // Delay plus egui's frame prediction targets smooth native animation near 60fps.
         ctx.request_repaint_after(FRAME_INTERVAL);
     }

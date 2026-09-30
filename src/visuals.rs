@@ -5,26 +5,35 @@ use std::{
 };
 
 use eframe::egui::{
-    Color32, ColorImage, Painter, Pos2, Rect, Shape, Stroke, TextureHandle, TextureOptions, Vec2,
+    Align2, Color32, ColorImage, FontId, Painter, Pos2, Rect, Shape, Stroke, TextureHandle,
+    TextureOptions, Vec2,
     epaint::{CubicBezierShape, EllipseShape, Mesh, Vertex},
 };
 use useful_timer::timer::{TimerPhase, TimerSettings, TimerSnapshot, TimerStyle};
 
-/// Completion effects settle into debris, a flipped hourglass, or an empty launch site.
+mod cinematic;
+mod wand;
+
+/// Completion effects are finite and settle into a static finished pose.
 pub fn finish_effect_duration(style: TimerStyle) -> Duration {
     match style {
         TimerStyle::Bomb => Duration::from_millis(3400),
         TimerStyle::Hourglass => Duration::from_millis(1800),
         TimerStyle::Rocket => Duration::from_millis(3600),
+        TimerStyle::CodeRain => Duration::from_millis(2600),
+        TimerStyle::MachineCore => Duration::from_millis(400),
+        TimerStyle::DragonOrb => Duration::from_millis(2800),
+        TimerStyle::CrescentWand => Duration::from_millis(3400),
     }
 }
 
-pub fn needs_animation(style: TimerStyle, snapshot: &TimerSnapshot) -> bool {
-    snapshot.phase == TimerPhase::Running
-        || (snapshot.phase == TimerPhase::Finished
-            && snapshot
-                .effect_elapsed
-                .is_some_and(|elapsed| elapsed < finish_effect_duration(style)))
+pub fn needs_animation(settings: &TimerSettings, snapshot: &TimerSnapshot) -> bool {
+    !settings.reduced_motion
+        && (snapshot.phase == TimerPhase::Running
+            || (snapshot.phase == TimerPhase::Finished
+                && snapshot
+                    .effect_elapsed
+                    .is_some_and(|elapsed| elapsed < finish_effect_duration(settings.style))))
 }
 
 /// Positive fractions of a second remain visible as one second, never zero.
@@ -55,7 +64,6 @@ pub fn draw_timer(
     rect: Rect,
     settings: &TimerSettings,
     snapshot: &TimerSnapshot,
-    animation_time: f64,
 ) {
     if !rect.is_finite() || rect.width() <= 0.0 || rect.height() <= 0.0 {
         return;
@@ -72,17 +80,35 @@ pub fn draw_timer(
         rotation: Vec2::new(1.0, 0.0),
         offset: Vec2::ZERO,
     };
-    // Periodic effects need only this bounded phase, not a growing f32 timestamp.
-    let time = if animation_time.is_finite() {
-        animation_time.rem_euclid(120.0) as f32
-    } else {
+    // Freeze ambient motion during pause; reduced motion keeps only progress cues.
+    let time = if settings.reduced_motion {
         0.0
+    } else {
+        snapshot.animation_elapsed.as_secs_f64().rem_euclid(120.0) as f32
+    };
+    let mut settled;
+    let snapshot = if settings.reduced_motion && snapshot.phase == TimerPhase::Finished {
+        settled = snapshot.clone();
+        settled.effect_elapsed = Some(finish_effect_duration(settings.style));
+        &settled
+    } else {
+        snapshot
     };
 
     match settings.style {
         TimerStyle::Bomb => draw_bomb(&canvas, snapshot, time),
         TimerStyle::Hourglass => draw_hourglass(&canvas, snapshot, time),
         TimerStyle::Rocket => draw_rocket(&canvas, snapshot, time),
+        TimerStyle::CodeRain => {
+            cinematic::code_rain(&canvas, snapshot, time, settings.reduced_motion)
+        }
+        TimerStyle::MachineCore => {
+            cinematic::machine_core(&canvas, snapshot, time, settings.reduced_motion)
+        }
+        TimerStyle::DragonOrb => {
+            cinematic::dragon_orb(&canvas, snapshot, time, settings.reduced_motion)
+        }
+        TimerStyle::CrescentWand => wand::draw(&canvas, snapshot, time, settings.reduced_motion),
     }
 }
 
@@ -340,6 +366,31 @@ impl Canvas<'_> {
             texture_id: source.texture_id,
         };
         self.painter.add(mesh);
+    }
+}
+
+fn readout(c: &Canvas<'_>, snapshot: &TimerSnapshot, y: f32, color: Color32, progress: bool) {
+    c.rect(67.0, y - 24.0, 186.0, 48.0, 10, rgba(5, 12, 19, 0.97));
+    c.painter.text(
+        c.point(160.0, y - 1.0),
+        Align2::CENTER_CENTER,
+        format_remaining(snapshot.remaining),
+        FontId::monospace(31.0 * c.scale),
+        color,
+    );
+    if progress && snapshot.phase != TimerPhase::Finished {
+        c.line(
+            [88.0, y + 30.0],
+            [232.0, y + 30.0],
+            2.0,
+            color.gamma_multiply(0.13),
+        );
+        c.line(
+            [88.0, y + 30.0],
+            [88.0 + 144.0 * snapshot.remaining_fraction, y + 30.0],
+            2.0,
+            color.gamma_multiply(0.8),
+        );
     }
 }
 
