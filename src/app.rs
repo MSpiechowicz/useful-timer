@@ -14,11 +14,16 @@ use useful_timer::{
     },
 };
 
-use crate::visuals;
+use crate::{branding, visuals};
 
-const BONE: Color32 = Color32::from_rgb(247, 246, 243);
-const INK: Color32 = Color32::from_rgb(42, 43, 40);
-const MUTED: Color32 = Color32::from_rgb(100, 101, 95);
+const BACKGROUND: Color32 = Color32::from_rgb(25, 27, 26);
+const SIDEBAR: Color32 = Color32::from_rgb(30, 32, 30);
+const SURFACE: Color32 = Color32::from_rgb(36, 39, 36);
+const RAISED: Color32 = Color32::from_rgb(47, 50, 46);
+const BORDER: Color32 = Color32::from_rgb(62, 66, 59);
+const TEXT: Color32 = Color32::from_rgb(242, 240, 233);
+const MUTED: Color32 = Color32::from_rgb(163, 169, 157);
+const ACCENT: Color32 = Color32::from_rgb(233, 188, 120);
 const FRAME_INTERVAL: Duration = Duration::from_millis(33);
 const LOGIC_INTERVAL: Duration = Duration::from_millis(100);
 const WIDGET_TITLE_HEIGHT: f32 = 50.0;
@@ -26,8 +31,7 @@ const WIDGET_TITLE_HEIGHT: f32 = 50.0;
 enum Command {
     Action(TimerId, TimerAction),
     Settings(TimerId, TimerSettings),
-    Style(TimerId, TimerStyle),
-    Muted(TimerId, bool),
+    Locked(TimerId, bool),
     Remove(TimerId),
 }
 
@@ -41,6 +45,7 @@ struct TimerView {
     settings: TimerSettings,
     snapshot: TimerSnapshot,
     position: Option<WidgetPosition>,
+    locked: bool,
 }
 
 impl TimerView {
@@ -50,6 +55,7 @@ impl TimerView {
             settings: timer.settings().clone(),
             snapshot: timer.snapshot(now),
             position: timer.position,
+            locked: timer.locked,
         }
     }
 }
@@ -90,7 +96,7 @@ impl WidgetWindow {
         let builder = egui::ViewportBuilder::default()
             .with_title(widget_title(view.id, &view.settings))
             .with_app_id("useful-timer")
-            .with_icon(egui::IconData::default())
+            .with_icon(branding::icon())
             .with_inner_size(size)
             .with_decorations(false)
             .with_resizable(false)
@@ -145,7 +151,8 @@ impl TimeInput {
         Duration::from_secs(self.hours * 3600 + self.minutes * 60 + self.seconds)
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui) -> bool {
+    fn ui(&mut self, ui: &mut egui::Ui) -> (bool, bool) {
+        let mut changed = false;
         let mut editing = false;
         ui.horizontal(|ui| {
             for (label, value, maximum) in [
@@ -154,20 +161,22 @@ impl TimeInput {
                 ("Seconds", &mut self.seconds, 59),
             ] {
                 ui.vertical(|ui| {
-                    let label = ui.label(label);
+                    let label = ui.label(RichText::new(label).small().color(MUTED));
                     let response = ui
-                        .add(
+                        .add_sized(
+                            [64.0, 36.0],
                             egui::DragValue::new(value)
                                 .range(0..=maximum)
                                 .speed(1.0)
                                 .update_while_editing(false),
                         )
                         .labelled_by(label.id);
-                    editing |= response.changed() || response.has_focus();
+                    changed |= response.changed();
+                    editing |= response.has_focus();
                 });
             }
         });
-        editing
+        (changed, editing)
     }
 }
 
@@ -188,29 +197,55 @@ pub struct UsefulTimerApp {
     completions: Vec<CompletionEvent>,
     repaint_ids: Vec<(TimerId, bool)>,
     started: Instant,
+    logo: egui::TextureHandle,
 }
 
 impl UsefulTimerApp {
     pub fn new(context: &eframe::CreationContext<'_>) -> Self {
-        let mut visuals = egui::Visuals::light();
-        visuals.panel_fill = BONE;
-        visuals.override_text_color = Some(INK);
-        visuals.selection.bg_fill = Color32::from_rgb(220, 228, 212);
-        visuals.selection.stroke.color = INK;
+        let mut visuals = egui::Visuals::dark();
+        visuals.panel_fill = BACKGROUND;
+        visuals.override_text_color = Some(TEXT);
+        visuals.extreme_bg_color = BACKGROUND;
+        visuals.faint_bg_color = SURFACE;
+        visuals.selection.bg_fill = ACCENT.gamma_multiply(0.25);
+        visuals.selection.stroke = egui::Stroke::new(1.0, ACCENT);
+        visuals.slider_trailing_fill = true;
+        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, BORDER);
+        for widget in [
+            &mut visuals.widgets.inactive,
+            &mut visuals.widgets.hovered,
+            &mut visuals.widgets.active,
+            &mut visuals.widgets.open,
+        ] {
+            widget.corner_radius = egui::CornerRadius::same(8);
+            widget.fg_stroke = egui::Stroke::new(1.0, TEXT);
+            widget.bg_stroke = egui::Stroke::new(1.0, BORDER);
+            widget.bg_fill = RAISED;
+            widget.weak_bg_fill = RAISED;
+            widget.expansion = 0.0;
+        }
+        visuals.widgets.hovered.bg_fill = Color32::from_rgb(65, 69, 60);
+        visuals.widgets.hovered.weak_bg_fill = visuals.widgets.hovered.bg_fill;
+        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, ACCENT);
+        visuals.widgets.active.bg_stroke = egui::Stroke::new(1.5, ACCENT);
         context.egui_ctx.set_visuals(visuals);
         context.egui_ctx.global_style_mut(|style| {
             style.spacing.item_spacing = egui::vec2(10.0, 10.0);
-            style.spacing.button_padding = egui::vec2(12.0, 7.0);
-            style.spacing.interact_size.y = 32.0;
-            style
-                .text_styles
-                .insert(egui::TextStyle::Body, egui::FontId::proportional(16.0));
-            style
-                .text_styles
-                .insert(egui::TextStyle::Button, egui::FontId::proportional(16.0));
-            style
-                .text_styles
-                .insert(egui::TextStyle::Small, egui::FontId::proportional(13.0));
+            style.spacing.button_padding = egui::vec2(14.0, 9.0);
+            style.spacing.interact_size.y = 36.0;
+            style.spacing.icon_width = 18.0;
+            style.spacing.icon_spacing = 10.0;
+            style.spacing.slider_width = 140.0;
+            for (kind, size) in [
+                (egui::TextStyle::Body, 15.0),
+                (egui::TextStyle::Button, 15.0),
+                (egui::TextStyle::Small, 12.0),
+                (egui::TextStyle::Heading, 24.0),
+            ] {
+                style
+                    .text_styles
+                    .insert(kind, egui::FontId::proportional(size));
+            }
         });
 
         let (saved, mut persistence_warning) = SavedState::load(context.storage);
@@ -241,7 +276,11 @@ impl UsefulTimerApp {
                     .collect()
             })
             .unwrap_or_default();
-        let draft = TimerSettings::default();
+        let selected = timers.first().map(|timer| timer.id);
+        let draft = timers
+            .first()
+            .map(|timer| timer.settings().clone())
+            .unwrap_or_default();
         let app = Self {
             shared: Arc::new(Mutex::new(SharedState {
                 timers,
@@ -251,7 +290,7 @@ impl UsefulTimerApp {
             next_id,
             windows: Vec::new(),
             monitors,
-            selected: None,
+            selected,
             duration_input: TimeInput::from_duration(draft.duration),
             remaining_input: TimeInput::from_duration(draft.duration),
             remaining_dirty: false,
@@ -262,6 +301,7 @@ impl UsefulTimerApp {
             completions: Vec::with_capacity(MAX_TIMERS),
             repaint_ids: Vec::with_capacity(MAX_TIMERS),
             started: Instant::now(),
+            logo: branding::texture(&context.egui_ctx),
         };
         eprintln!("Useful Timer ready");
         app
@@ -320,293 +360,393 @@ impl UsefulTimerApp {
     }
 
     fn sidebar(&mut self, ui: &mut egui::Ui, views: &[TimerView]) {
-        ui.add_space(12.0);
-        ui.heading("Your timers");
-        ui.label(RichText::new(format!("{} / {MAX_TIMERS} open", views.len())).color(MUTED));
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Your timers").strong());
+            ui.label(RichText::new(format!("{:02}", views.len())).color(MUTED));
+        });
         ui.add_space(6.0);
         if ui
-            .add_sized(
-                [ui.available_width(), 36.0],
-                egui::Button::new("+ New timer"),
+            .add_enabled(
+                views.len() < MAX_TIMERS,
+                egui::Button::new("+  New timer").min_size(egui::vec2(ui.available_width(), 40.0)),
             )
+            .on_hover_text("Create an independent desktop countdown")
             .clicked()
         {
             self.new_draft();
         }
-        ui.separator();
+        ui.add_space(14.0);
         egui::ScrollArea::vertical()
+            .id_salt("timer-list")
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 if views.is_empty() {
-                    ui.add_space(16.0);
-                    ui.label("No timers yet.");
+                    ui.add_space(12.0);
+                    ui.label(RichText::new("A little room to focus.").strong());
                     ui.label(
                         RichText::new(
-                            "Choose a style and duration, then add your first desktop widget.",
+                            "Create your first timer. It will stay above your other windows.",
                         )
                         .color(MUTED),
                     );
                 }
                 for view in views {
                     ui.push_id(view.id, |ui| {
-                        egui::Frame::new()
-                            .fill(if self.selected == Some(view.id) {
-                                Color32::from_rgb(229, 232, 223)
+                        let selected = self.selected == Some(view.id);
+                        let response = ui.add_sized(
+                            [ui.available_width(), 112.0],
+                            egui::Button::new("")
+                                .fill(if selected { SURFACE } else { SIDEBAR })
+                                .stroke(egui::Stroke::new(
+                                    1.0,
+                                    if selected {
+                                        ACCENT.gamma_multiply(0.65)
+                                    } else {
+                                        BORDER
+                                    },
+                                ))
+                                .corner_radius(12),
+                        );
+                        let rect = response.rect.shrink(14.0);
+                        let label = display_label(&view.settings.label);
+                        response.widget_info(|| {
+                            egui::WidgetInfo::selected(
+                                egui::WidgetType::SelectableLabel,
+                                true,
+                                selected,
+                                label,
+                            )
+                        });
+                        let mut title = egui::text::LayoutJob::simple_singleline(
+                            label.to_owned(),
+                            egui::FontId::proportional(16.0),
+                            TEXT,
+                        );
+                        title.wrap.max_width = rect.width();
+                        title.wrap.max_rows = 1;
+                        let title = ui.painter().layout_job(title);
+                        ui.painter().galley(rect.min, title, TEXT);
+                        ui.painter().text(
+                            rect.min + egui::vec2(0.0, 28.0),
+                            egui::Align2::LEFT_TOP,
+                            visuals::format_remaining(view.snapshot.remaining),
+                            egui::FontId::monospace(26.0),
+                            if selected { ACCENT } else { TEXT },
+                        );
+                        ui.painter().text(
+                            rect.left_bottom(),
+                            egui::Align2::LEFT_BOTTOM,
+                            view.settings.style.label(),
+                            egui::FontId::proportional(12.0),
+                            MUTED,
+                        );
+                        ui.painter().text(
+                            rect.right_bottom(),
+                            egui::Align2::RIGHT_BOTTOM,
+                            phase_label(view.snapshot.phase),
+                            egui::FontId::proportional(12.0),
+                            if view.snapshot.phase == TimerPhase::Running {
+                                ACCENT
                             } else {
-                                Color32::from_rgb(255, 254, 252)
-                            })
-                            .inner_margin(12.0)
-                            .show(ui, |ui| {
-                                ui.set_min_width((ui.available_width() - 2.0).max(0.0));
-                                let label = display_label(&view.settings.label);
-                                if ui
-                                    .selectable_label(
-                                        self.selected == Some(view.id),
-                                        RichText::new(label).strong(),
-                                    )
-                                    .clicked()
-                                {
-                                    self.select(view);
-                                }
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.label(
-                                        RichText::new(view.settings.style.label()).color(MUTED),
-                                    );
-                                    ui.label(
-                                        RichText::new(phase_label(view.snapshot.phase))
-                                            .color(MUTED),
-                                    );
-                                });
-                                ui.label(
-                                    RichText::new(visuals::format_remaining(
-                                        view.snapshot.remaining,
-                                    ))
-                                    .monospace()
-                                    .size(23.0),
-                                );
-                                ui.horizontal_wrapped(|ui| {
-                                    if let Some(action) = timer_controls(ui, view.snapshot.phase) {
-                                        queue(
-                                            &self.shared,
-                                            ui.ctx(),
-                                            Command::Action(view.id, action),
-                                        );
-                                    }
-                                });
-                                ui.horizontal_wrapped(|ui| {
-                                    if ui.small_button("Edit").clicked() {
-                                        self.select(view);
-                                    }
-                                    if ui.small_button("Remove").clicked() {
-                                        queue(&self.shared, ui.ctx(), Command::Remove(view.id));
-                                    }
-                                });
-                            });
-                        ui.add_space(6.0);
+                                MUTED
+                            },
+                        );
+                        if response.on_hover_text(label).clicked() {
+                            self.select(view);
+                        }
                     });
                 }
             });
     }
 
     fn live_controls(&mut self, ui: &mut egui::Ui, view: &TimerView) {
-        ui.label(
-            RichText::new("CURRENT COUNTDOWN")
-                .small()
-                .strong()
-                .color(MUTED),
-        );
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(phase_label(view.snapshot.phase)).strong());
-            ui.label(
-                RichText::new(visuals::format_remaining(view.snapshot.remaining))
-                    .monospace()
-                    .size(24.0),
-            );
-            if let Some(action) = timer_controls(ui, view.snapshot.phase) {
-                queue(&self.shared, ui.ctx(), Command::Action(view.id, action));
-                self.remaining_dirty = false;
-            }
-        });
+        egui::Frame::new()
+            .fill(SURFACE)
+            .corner_radius(16)
+            .inner_margin(22.0)
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(phase_label(view.snapshot.phase)).color(ACCENT));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(RichText::new("CURRENT COUNTDOWN").small().color(MUTED));
+                    });
+                });
+                ui.label(
+                    RichText::new(visuals::format_remaining(view.snapshot.remaining))
+                        .monospace()
+                        .size(if ui.available_width() < 480.0 {
+                            48.0
+                        } else {
+                            64.0
+                        }),
+                );
+                ui.add(
+                    egui::ProgressBar::new(view.snapshot.remaining_fraction)
+                        .fill(ACCENT)
+                        .desired_height(4.0),
+                );
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if let Some(action) = timer_controls(ui, view.snapshot.phase) {
+                        queue(&self.shared, ui.ctx(), Command::Action(view.id, action));
+                        self.remaining_dirty = false;
+                    }
+                });
+            });
         if matches!(
             view.snapshot.phase,
             TimerPhase::Running | TimerPhase::Paused
         ) {
-            if !self.remaining_dirty {
-                self.remaining_input = TimeInput::from_duration(view.snapshot.remaining);
-            }
-            ui.label("Remaining time");
-            ui.push_id("remaining-time", |ui| {
-                self.remaining_dirty |= self.remaining_input.ui(ui);
-            });
-            let remaining = self.remaining_input.duration();
-            ui.horizontal_wrapped(|ui| {
-                if ui
-                    .add_enabled(
-                        remaining <= Duration::from_secs(86_400),
-                        egui::Button::new("Set remaining time"),
-                    )
-                    .clicked()
-                {
-                    queue(
-                        &self.shared,
-                        ui.ctx(),
-                        Command::Action(view.id, TimerAction::SetRemaining(remaining)),
-                    );
-                    self.remaining_dirty = false;
-                }
-                for (label, seconds) in [
-                    ("-5 min", -300),
-                    ("-1 min", -60),
-                    ("+1 min", 60),
-                    ("+5 min", 300),
-                ] {
-                    if ui.button(label).clicked() {
-                        queue(
-                            &self.shared,
-                            ui.ctx(),
-                            Command::Action(view.id, TimerAction::AdjustRemaining(seconds)),
-                        );
-                        self.remaining_dirty = false;
+            egui::CollapsingHeader::new("Adjust remaining time")
+                .id_salt(("remaining", view.id))
+                .show(ui, |ui| {
+                    if !self.remaining_dirty {
+                        self.remaining_input = TimeInput::from_duration(view.snapshot.remaining);
                     }
-                }
-            });
-            ui.label(RichText::new("Live edits keep the timer running or paused. Zero finishes it. Maximum: 24 hours.").small().color(MUTED));
+                    ui.push_id("remaining-time", |ui| {
+                        let (changed, editing) = self.remaining_input.ui(ui);
+                        self.remaining_dirty |= changed || editing;
+                    });
+                    let remaining = self.remaining_input.duration();
+                    ui.horizontal_wrapped(|ui| {
+                        if ui
+                            .add_enabled(
+                                remaining <= Duration::from_secs(86_400),
+                                egui::Button::new("Set remaining time"),
+                            )
+                            .clicked()
+                        {
+                            queue(
+                                &self.shared,
+                                ui.ctx(),
+                                Command::Action(view.id, TimerAction::SetRemaining(remaining)),
+                            );
+                            self.remaining_dirty = false;
+                        }
+                        for (label, seconds) in [
+                            ("−5 min", -300),
+                            ("−1 min", -60),
+                            ("+1 min", 60),
+                            ("+5 min", 300),
+                        ] {
+                            if ui
+                                .add_sized([80.0, 36.0], egui::Button::new(label))
+                                .clicked()
+                            {
+                                queue(
+                                    &self.shared,
+                                    ui.ctx(),
+                                    Command::Action(view.id, TimerAction::AdjustRemaining(seconds)),
+                                );
+                                self.remaining_dirty = false;
+                            }
+                        }
+                    });
+                    ui.label(
+                        RichText::new(
+                            "Keeps the current running or paused state. Zero finishes the timer.",
+                        )
+                        .small()
+                        .color(MUTED),
+                    );
+                });
         }
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Animation");
+    }
+
+    fn artwork_picker(&mut self, ui: &mut egui::Ui) -> bool {
+        ui.label(RichText::new("Desktop artwork").size(17.0).strong());
+        let width = (ui.available_width() - 20.0) / 3.0;
+        let mut changed = false;
+        let mut settings = self.draft.clone();
+        let preview = TimerSnapshot {
+            phase: TimerPhase::Idle,
+            remaining: self.duration_input.duration(),
+            remaining_fraction: 1.0,
+            effect_elapsed: None,
+        };
+        ui.horizontal(|ui| {
             for style in TimerStyle::ALL {
-                if ui
-                    .selectable_label(view.settings.style == style, style.label())
-                    .clicked()
-                {
+                let selected = self.draft.style == style;
+                let response = ui.add_sized(
+                    [width, 148.0],
+                    egui::Button::new("")
+                        .fill(if selected { RAISED } else { SURFACE })
+                        .corner_radius(12)
+                        .stroke(egui::Stroke::new(
+                            1.0,
+                            if selected { ACCENT } else { BORDER },
+                        )),
+                );
+                response.widget_info(|| {
+                    egui::WidgetInfo::selected(
+                        egui::WidgetType::SelectableLabel,
+                        true,
+                        selected,
+                        style.label(),
+                    )
+                });
+                let rect = response.rect;
+                let artwork = egui::Rect::from_center_size(
+                    egui::pos2(rect.center().x, rect.top() + 57.0),
+                    Vec2::splat(96.0_f32.min(width - 8.0)),
+                );
+                settings.style = style;
+                visuals::draw_timer(ui.painter(), artwork, &settings, &preview, 0.0);
+                ui.painter().text(
+                    egui::pos2(rect.center().x, rect.bottom() - 20.0),
+                    egui::Align2::CENTER_CENTER,
+                    style.label(),
+                    egui::FontId::proportional(14.0),
+                    if selected { ACCENT } else { TEXT },
+                );
+                if response.clicked() && !selected {
                     self.draft.style = style;
-                    queue(&self.shared, ui.ctx(), Command::Style(view.id, style));
+                    changed = true;
                 }
             }
         });
-        let mut muted = view.settings.muted;
-        if ui.checkbox(&mut muted, "Mute completion sound").changed() {
-            self.draft.muted = muted;
-            queue(&self.shared, ui.ctx(), Command::Muted(view.id, muted));
-        }
+        changed
+    }
+
+    fn duration_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        ui.label(RichText::new("Duration").size(17.0).strong());
+        let mut changed = ui
+            .push_id("configured-duration", |ui| self.duration_input.ui(ui).0)
+            .inner;
+        ui.horizontal_wrapped(|ui| {
+            for minutes in [5, 15, 25, 45] {
+                if ui
+                    .add_sized([80.0, 36.0], egui::Button::new(format!("{minutes} min")))
+                    .clicked()
+                {
+                    self.duration_input =
+                        TimeInput::from_duration(Duration::from_secs(minutes * 60));
+                    changed = true;
+                }
+            }
+        });
         ui.label(
-            RichText::new("Animation and mute changes apply immediately without resetting time.")
+            RichText::new("Changing duration resets the countdown.")
                 .small()
                 .color(MUTED),
         );
-        ui.add_space(12.0);
-        ui.separator();
+        changed
+    }
+
+    fn widget_settings(&mut self, ui: &mut egui::Ui) -> bool {
+        ui.label(RichText::new("Widget & sound").size(17.0).strong());
+        let mut changed = false;
+        egui::Grid::new("widget-settings")
+            .spacing([12.0, 12.0])
+            .show(ui, |ui| {
+                let label = ui.label(RichText::new("Size").color(MUTED));
+                changed |= ui
+                    .add(
+                        egui::Slider::new(&mut self.draft.size, 220.0..=460.0)
+                            .suffix(" px")
+                            .integer(),
+                    )
+                    .labelled_by(label.id)
+                    .changed();
+                ui.end_row();
+                let label = ui.label(RichText::new("Volume").color(MUTED));
+                changed |= ui
+                    .add_enabled(
+                        !self.draft.muted,
+                        egui::Slider::new(&mut self.draft.volume, 0.0..=1.0).fixed_decimals(2),
+                    )
+                    .labelled_by(label.id)
+                    .changed();
+                ui.end_row();
+            });
+        changed |= ui
+            .checkbox(&mut self.draft.muted, "Mute completion sound")
+            .changed();
+        changed
     }
 
     fn editor(&mut self, ui: &mut egui::Ui, views: &[TimerView]) {
-        ui.add_space(12.0);
-        let heading = match self.selected {
-            Some(id) => format!("Edit timer #{id}"),
-            None => "New desktop timer".to_owned(),
-        };
-        ui.heading(heading);
-        ui.label(
-            RichText::new("Independent. Always on top. Drag the artwork to move.").color(MUTED),
-        );
-        ui.add_space(12.0);
-        egui::ScrollArea::vertical().id_salt(self.selected).auto_shrink([false, false]).show(ui, |ui| {
-            if let Some(view) = views.iter().find(|view| Some(view.id) == self.selected) {
-                self.live_controls(ui, view);
-            }
-            ui.label(RichText::new("STYLE").small().strong().color(MUTED));
-            let preview_width = ((ui.available_width() - 28.0) / 3.0).clamp(70.0, 150.0);
-            let previous_style = self.draft.style;
-            ui.horizontal(|ui| {
-                for style in TimerStyle::ALL {
-                    ui.vertical(|ui| {
-                        ui.set_width(preview_width);
-                        let (rect, response) = ui.allocate_exact_size(Vec2::splat(preview_width), egui::Sense::click());
-                        let mut settings = self.draft.clone();
-                        settings.style = style;
-                        let preview = TimerSnapshot {
-                            phase: TimerPhase::Idle,
-                            remaining: settings.duration,
-                            remaining_fraction: 1.0,
-                            effect_elapsed: None,
-                        };
-                        visuals::draw_timer(ui.painter(), rect, &settings, &preview, 0.0);
-                        if response.clicked() {
-                            self.draft.style = style;
-                        }
-                        if ui.selectable_label(self.draft.style == style, style.label()).clicked() {
-                            self.draft.style = style;
-                        }
-                    });
-                }
-            });
-            if self.draft.style != previous_style && let Some(id) = self.selected {
-                queue(&self.shared, ui.ctx(), Command::Style(id, self.draft.style));
-            }
-            ui.add_space(14.0);
-            let value_width = (ui.available_width() - 150.0).clamp(110.0, 240.0);
-            egui::Grid::new("timer-settings")
-                .num_columns(2)
-                .spacing([16.0, 16.0])
-                .show(ui, |ui| {
-                    let label = ui.label("Label");
-                    ui.add(egui::TextEdit::singleline(&mut self.draft.label)
-                        .char_limit(80)
-                        .desired_width(value_width))
-                        .labelled_by(label.id);
-                    ui.end_row();
-
-                    ui.label("Duration");
-                    ui.push_id("configured-duration", |ui| {
-                        self.duration_input.ui(ui);
-                    });
-                    ui.end_row();
-
-                    let label = ui.label("Widget width");
-                    ui.add(egui::Slider::new(&mut self.draft.size, 220.0..=460.0)
-                        .suffix(" px")
-                        .integer())
-                        .labelled_by(label.id);
-                    ui.end_row();
-
-                    let label = ui.label("Sound volume");
-                    ui.add(egui::Slider::new(&mut self.draft.volume, 0.0..=1.0)
-                        .fixed_decimals(2))
-                        .labelled_by(label.id)
-                        .on_hover_text("0 is silent. Each timer has its own volume.");
-                    ui.end_row();
+        egui::ScrollArea::vertical()
+            .id_salt(("workspace", self.selected))
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.set_max_width(ui.available_width().min(860.0));
+                let mut changed = false;
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(if self.selected.is_some() { "TIMER WORKSPACE" } else { "NEW TIMER" }).small().color(MUTED));
+                    if let Some(id) = self.selected {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.menu_button("•••", |ui| {
+                                if ui.button("Restore defaults").on_hover_text("Reset to Focus, 25 minutes, Bomb, 300 px, volume 0.60, and idle.").clicked() {
+                                    queue(&self.shared, ui.ctx(), Command::Action(id, TimerAction::RestoreDefaults));
+                                    self.draft = TimerSettings::default();
+                                    self.duration_input = TimeInput::from_duration(self.draft.duration);
+                                    self.remaining_dirty = false;
+                                    self.editor_error = None;
+                                    ui.close();
+                                }
+                                ui.separator();
+                                if ui.button(RichText::new("Remove timer").color(Color32::from_rgb(239, 151, 136))).clicked() {
+                                    queue(&self.shared, ui.ctx(), Command::Remove(id));
+                                    ui.close();
+                                }
+                            }).response.on_hover_text("Timer actions");
+                        });
+                    }
                 });
-            if self.selected.is_none() {
-                ui.checkbox(&mut self.draft.muted, "Mute completion sound");
-            }
-            ui.add_space(10.0);
-            ui.label(RichText::new(format!("Duration: {}", visuals::format_remaining(self.duration_input.duration()))).monospace().color(MUTED));
-            ui.label(RichText::new("Changing duration resets this timer to idle. Other edits preserve its countdown.").small().color(MUTED));
-            ui.add_space(14.0);
-            ui.horizontal_wrapped(|ui| {
-                let text = if self.selected.is_some() { "Apply settings" } else { "Add timer" };
-                if ui.add(egui::Button::new(RichText::new(text).color(Color32::WHITE)).fill(INK)).clicked() {
+                changed |= ui.add(
+                    egui::TextEdit::singleline(&mut self.draft.label)
+                        .font(egui::FontId::proportional(28.0))
+                        .char_limit(80)
+                        .hint_text("Name your timer")
+                        .desired_width(ui.available_width())
+                        .frame(egui::Frame::NONE),
+                ).on_hover_text("Timer name · click to rename").changed();
+                ui.label(RichText::new(if self.selected.is_some() {
+                    "Make it yours. Changes apply instantly."
+                } else {
+                    "A countdown with a little character. Always on your desktop."
+                }).color(MUTED));
+                ui.add_space(8.0);
+                if let Some(view) = views.iter().find(|view| Some(view.id) == self.selected) {
+                    self.live_controls(ui, view);
+                    ui.add_space(10.0);
+                }
+                changed |= self.artwork_picker(ui);
+                ui.add_space(12.0);
+                if ui.available_width() >= 600.0 {
+                    ui.columns(2, |columns| {
+                        changed |= self.duration_controls(&mut columns[0]);
+                        changed |= self.widget_settings(&mut columns[1]);
+                    });
+                } else {
+                    changed |= self.duration_controls(ui);
+                    ui.add_space(8.0);
+                    changed |= self.widget_settings(ui);
+                }
+                if changed && self.selected.is_some() {
                     self.submit_settings(ui.ctx());
                 }
-                if let Some(id) = self.selected {
-                    if ui.button("Restore defaults").on_hover_text("Restore Focus, 25 minutes, Bomb, 300 px, volume 0.60, and idle. Keep this timer's identity and position.").clicked() {
-                        queue(&self.shared, ui.ctx(), Command::Action(id, TimerAction::RestoreDefaults));
-                        self.draft = TimerSettings::default();
-                        self.duration_input = TimeInput::from_duration(self.draft.duration);
-                        self.remaining_dirty = false;
-                        self.editor_error = None;
-                    }
-                } else if ui.button("Defaults").clicked() {
-                    self.new_draft();
+                if let Some(error) = &self.editor_error {
+                    ui.colored_label(Color32::from_rgb(239, 151, 136), error);
                 }
+                if self.selected.is_none() {
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        if ui.add(primary_button("Create timer").min_size(egui::vec2(160.0, 42.0))).clicked() {
+                            self.submit_settings(ui.ctx());
+                        }
+                        if ui.add(egui::Button::new("Reset form").min_size(egui::vec2(160.0, 42.0))).clicked() {
+                            self.new_draft();
+                        }
+                    });
+                }
+                ui.add_space(16.0);
+                ui.separator();
+                ui.label(RichText::new("Drag a desktop widget to move it. Right-click it for controls.").small().color(MUTED));
+                ui.label(RichText::new("Saved on this device · Reopens at full duration · Closing this app quits all timers").small().color(MUTED));
             });
-            if let Some(error) = &self.editor_error {
-                ui.colored_label(Color32::from_rgb(151, 46, 40), error);
-            }
-            ui.add_space(20.0);
-            ui.separator();
-            ui.label(RichText::new("Settings and widget positions are saved locally. Reopening restores every timer idle at its full duration.").small().color(MUTED));
-            ui.label(RichText::new("Closing a widget removes that timer. Closing this panel quits all timers.").small().color(MUTED));
-        });
     }
 
     fn register_widgets(&mut self, ctx: &egui::Context, views: &[TimerView]) {
@@ -664,8 +804,7 @@ impl eframe::App for UsefulTimerApp {
                 let id = match &command {
                     Command::Action(id, _)
                     | Command::Settings(id, _)
-                    | Command::Style(id, _)
-                    | Command::Muted(id, _)
+                    | Command::Locked(id, _)
                     | Command::Remove(id) => *id,
                 };
                 let Some(index) = state.timers.iter().position(|timer| timer.id == id) else {
@@ -683,16 +822,9 @@ impl eframe::App for UsefulTimerApp {
                             }
                         }
                     }
-                    Command::Style(_, _) | Command::Muted(_, _) => {
-                        let mut settings = state.timers[index].settings().clone();
-                        match command {
-                            Command::Style(_, style) => settings.style = style,
-                            Command::Muted(_, muted) => settings.muted = muted,
-                            _ => unreachable!(),
-                        }
-                        state.timers[index]
-                            .update_settings(settings, now)
-                            .expect("existing settings are valid")
+                    Command::Locked(_, locked) => {
+                        state.timers[index].locked = locked;
+                        None
                     }
                     Command::Remove(_) => {
                         state.timers.remove(index);
@@ -754,12 +886,22 @@ impl eframe::App for UsefulTimerApp {
                 .collect()
         };
         egui::Panel::top("title")
-            .frame(egui::Frame::new().fill(BONE).inner_margin(20.0))
+            .frame(
+                egui::Frame::new()
+                    .fill(SIDEBAR)
+                    .inner_margin(egui::Margin::symmetric(24, 16)),
+            )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Useful Timer").size(28.0).strong());
+                    ui.add(egui::Image::new(&self.logo).fit_to_exact_size(Vec2::splat(38.0)));
+                    ui.add_space(2.0);
+                    ui.label(RichText::new("Useful Timer").size(22.0).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new("DESKTOP COUNTDOWNS").small().color(MUTED));
+                        ui.label(
+                            RichText::new("A little time, well spent.")
+                                .small()
+                                .color(MUTED),
+                        );
                     });
                 });
             });
@@ -770,7 +912,7 @@ impl eframe::App for UsefulTimerApp {
             egui::Panel::bottom("warnings")
                 .frame(
                     egui::Frame::new()
-                        .fill(Color32::from_rgb(251, 240, 211))
+                        .fill(Color32::from_rgb(67, 48, 32))
                         .inner_margin(12.0),
                 )
                 .show(ui, |ui| {
@@ -782,17 +924,17 @@ impl eframe::App for UsefulTimerApp {
                     .into_iter()
                     .flatten()
                     {
-                        ui.label(RichText::new(warning).color(INK));
+                        ui.label(RichText::new(warning).color(TEXT));
                     }
                 });
         }
         egui::Panel::left("timers")
             .resizable(false)
-            .exact_size(260.0)
-            .frame(egui::Frame::new().fill(BONE).inner_margin(16.0))
+            .exact_size(240.0)
+            .frame(egui::Frame::new().fill(SIDEBAR).inner_margin(20.0))
             .show(ui, |ui| self.sidebar(ui, &views));
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(BONE).inner_margin(24.0))
+            .frame(egui::Frame::new().fill(BACKGROUND).inner_margin(28.0))
             .show(ui, |ui| self.editor(ui, &views));
 
         // A timer added during this pass must be registered immediately, too.
@@ -896,7 +1038,6 @@ fn widget_ui(
     }) {
         ctx.send_viewport_cmd(ViewportCommand::InnerSize(size));
     }
-    ui.style_mut().visuals = egui::Visuals::dark();
     ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
     ui.spacing_mut().button_padding = egui::vec2(9.0, 5.0);
     ui.spacing_mut().interact_size.y = 28.0;
@@ -973,25 +1114,35 @@ fn widget_ui(
             );
             let interaction = response.union(title_response);
             interaction.context_menu(|ui| {
-                ui.label(RichText::new(label).strong());
-                ui.label(format!(
-                    "{} · {}",
-                    phase_label(view.snapshot.phase),
-                    visuals::format_remaining(view.snapshot.remaining)
-                ));
-                ui.separator();
-                if let Some(action) = timer_controls(ui, view.snapshot.phase) {
-                    queue(shared, &ctx, Command::Action(id, action));
+                let (label, action) = phase_action(view.snapshot.phase);
+                for (label, action, enabled) in [
+                    (label, action, view.snapshot.phase != TimerPhase::Finished),
+                    ("Reset", TimerAction::Reset, true),
+                ] {
+                    if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                        queue(shared, &ctx, Command::Action(id, action));
+                        ui.close();
+                    }
+                }
+                if ui.button("Remove").clicked() {
+                    queue(shared, &ctx, Command::Remove(id));
                     ui.close();
                 }
-                if ui.button("Remove timer").clicked() {
-                    queue(shared, &ctx, Command::Remove(id));
+                if ui
+                    .button(if view.locked { "Unlock" } else { "Lock" })
+                    .clicked()
+                {
+                    queue(shared, &ctx, Command::Locked(id, !view.locked));
                     ui.close();
                 }
             });
             // Start native dragging on the press, not after egui's drag threshold.
             // Title and artwork both drag; controls live in the context menu and panel.
-            if interaction.hovered() && ui.input(|input| input.pointer.primary_pressed()) {
+            if !view.locked
+                && !interaction.context_menu_opened()
+                && interaction.hovered()
+                && ui.input(|input| input.pointer.primary_pressed())
+            {
                 ctx.send_viewport_cmd(ViewportCommand::StartDrag);
             }
         });
@@ -1001,22 +1152,31 @@ fn widget_ui(
     }
 }
 
-fn timer_controls(ui: &mut egui::Ui, phase: TimerPhase) -> Option<TimerAction> {
-    let (label, action) = match phase {
-        TimerPhase::Idle => ("Start", TimerAction::Start),
+fn primary_button(label: &str) -> egui::Button<'_> {
+    egui::Button::new(RichText::new(label).color(BACKGROUND).strong())
+        .fill(ACCENT)
+        .stroke(egui::Stroke::NONE)
+}
+
+fn phase_action(phase: TimerPhase) -> (&'static str, TimerAction) {
+    match phase {
+        TimerPhase::Idle | TimerPhase::Finished => ("Start", TimerAction::Start),
         TimerPhase::Running => ("Pause", TimerAction::Pause),
         TimerPhase::Paused => ("Resume", TimerAction::Resume),
-        TimerPhase::Finished => ("Done", TimerAction::Start),
-    };
+    }
+}
+
+fn timer_controls(ui: &mut egui::Ui, phase: TimerPhase) -> Option<TimerAction> {
+    let (label, action) = phase_action(phase);
     let mut selected = None;
-    let button = egui::Button::new(label);
+    let button = primary_button(label).min_size(egui::vec2(100.0, 36.0));
     if ui
         .add_enabled(phase != TimerPhase::Finished, button)
         .clicked()
     {
         selected = Some(action);
     }
-    let reset = ui.button("Reset");
+    let reset = ui.add_sized([100.0, 36.0], egui::Button::new("Reset"));
     if reset.clicked() {
         selected = Some(TimerAction::Reset);
     }

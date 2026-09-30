@@ -17,6 +17,8 @@ pub struct SavedTimer {
     pub id: TimerId,
     pub settings: TimerSettings,
     pub position: Option<WidgetPosition>,
+    #[serde(default)]
+    pub locked: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -70,6 +72,7 @@ impl SavedState {
                     id: timer.id,
                     settings: timer.settings().clone(),
                     position: timer.position,
+                    locked: timer.locked,
                 })
                 .collect(),
         }
@@ -94,6 +97,7 @@ impl SavedState {
             .map(|saved| {
                 let mut timer = Timer::new(saved.id, saved.settings)?;
                 timer.position = saved.position;
+                timer.locked = saved.locked;
                 Ok(timer)
             })
             .collect()
@@ -227,6 +231,7 @@ mod tests {
         let now = Instant::now();
         let mut running = configured_timer(5);
         let mut finished = configured_timer(6);
+        running.locked = true;
         running.apply(TimerAction::Start, now);
         finished.apply(TimerAction::Start, now);
         finished.advance(now + Duration::from_secs(12));
@@ -240,6 +245,7 @@ mod tests {
         for (offset, mut timer) in restored.into_iter().enumerate() {
             assert_eq!(timer.id, 5 + offset as u64);
             assert_eq!(timer.settings(), configured_timer(timer.id).settings());
+            assert_eq!(timer.locked, offset == 0);
             assert_eq!(timer.position.unwrap().x, -125.0);
             assert_eq!(timer.position.unwrap().y, 300.5);
             let snapshot = timer.snapshot(now + Duration::from_secs(500));
@@ -261,6 +267,7 @@ mod tests {
         let saved = SavedState::decode(legacy).unwrap();
         let mut timer = saved.into_timers().unwrap().remove(0);
         assert!(!timer.settings().muted);
+        assert!(!timer.locked);
         assert_eq!(timer.settings().duration, Duration::from_secs(90));
         let now = Instant::now();
         timer.apply(TimerAction::Start, now);
