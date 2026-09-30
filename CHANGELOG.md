@@ -1,3 +1,9 @@
+## [1.2.1](https://github.com/MSpiechowicz/useful-timer/compare/v1.2.0...v1.2.1) (2026-09-30)
+
+### Bug Fixes
+
+* smooth timer seams and brighten wand finale ([15a0983](https://github.com/MSpiechowicz/useful-timer/commit/15a098333db4db5baadaef4a76ed9b7cccb49806))
+
 ## [1.2.0](https://github.com/MSpiechowicz/useful-timer/compare/v1.1.0...v1.2.0) (2026-09-30)
 
 ### Features
