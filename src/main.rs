@@ -5,6 +5,7 @@
 
 mod app;
 mod branding;
+mod theme;
 mod visuals;
 
 use eframe::egui;

@@ -14,16 +14,12 @@ use useful_timer::{
     },
 };
 
-use crate::{branding, visuals};
+use crate::{
+    branding,
+    theme::{self, Palette, Theme},
+    visuals,
+};
 
-const BACKGROUND: Color32 = Color32::from_rgb(25, 27, 26);
-const SIDEBAR: Color32 = Color32::from_rgb(30, 32, 30);
-const SURFACE: Color32 = Color32::from_rgb(36, 39, 36);
-const RAISED: Color32 = Color32::from_rgb(47, 50, 46);
-const BORDER: Color32 = Color32::from_rgb(62, 66, 59);
-const TEXT: Color32 = Color32::from_rgb(242, 240, 233);
-const MUTED: Color32 = Color32::from_rgb(163, 169, 157);
-const ACCENT: Color32 = Color32::from_rgb(233, 188, 120);
 const FRAME_INTERVAL: Duration = Duration::from_millis(33);
 const LOGIC_INTERVAL: Duration = Duration::from_millis(100);
 const WIDGET_TITLE_HEIGHT: f32 = 50.0;
@@ -164,7 +160,7 @@ impl TimeInput {
                 ("Seconds", &mut self.seconds, 59),
             ] {
                 ui.vertical(|ui| {
-                    let label = ui.label(RichText::new(label).small().color(MUTED));
+                    let label = ui.label(RichText::new(label).small().weak());
                     let response = ui
                         .add_sized(
                             [64.0, 36.0],
@@ -200,38 +196,17 @@ pub struct UsefulTimerApp {
     completions: Vec<CompletionEvent>,
     repaint_ids: Vec<(TimerId, bool)>,
     started: Instant,
+    theme: Theme,
     logo: egui::TextureHandle,
 }
 
 impl UsefulTimerApp {
     pub fn new(context: &eframe::CreationContext<'_>) -> Self {
-        let mut visuals = egui::Visuals::dark();
-        visuals.panel_fill = BACKGROUND;
-        visuals.override_text_color = Some(TEXT);
-        visuals.extreme_bg_color = BACKGROUND;
-        visuals.faint_bg_color = SURFACE;
-        visuals.selection.bg_fill = ACCENT.gamma_multiply(0.25);
-        visuals.selection.stroke = egui::Stroke::new(1.0, ACCENT);
-        visuals.slider_trailing_fill = true;
-        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, BORDER);
-        for widget in [
-            &mut visuals.widgets.inactive,
-            &mut visuals.widgets.hovered,
-            &mut visuals.widgets.active,
-            &mut visuals.widgets.open,
-        ] {
-            widget.corner_radius = egui::CornerRadius::same(8);
-            widget.fg_stroke = egui::Stroke::new(1.0, TEXT);
-            widget.bg_stroke = egui::Stroke::new(1.0, BORDER);
-            widget.bg_fill = RAISED;
-            widget.weak_bg_fill = RAISED;
-            widget.expansion = 0.0;
-        }
-        visuals.widgets.hovered.bg_fill = Color32::from_rgb(65, 69, 60);
-        visuals.widgets.hovered.weak_bg_fill = visuals.widgets.hovered.bg_fill;
-        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, ACCENT);
-        visuals.widgets.active.bg_stroke = egui::Stroke::new(1.5, ACCENT);
-        context.egui_ctx.set_visuals(visuals);
+        let theme = context
+            .storage
+            .and_then(|storage| eframe::get_value::<Theme>(storage, theme::STORAGE_KEY))
+            .unwrap_or_default();
+        theme.apply(&context.egui_ctx);
         context.egui_ctx.global_style_mut(|style| {
             style.spacing.item_spacing = egui::vec2(10.0, 10.0);
             style.spacing.button_padding = egui::vec2(14.0, 9.0);
@@ -304,6 +279,7 @@ impl UsefulTimerApp {
             completions: Vec::with_capacity(MAX_TIMERS),
             repaint_ids: Vec::with_capacity(MAX_TIMERS),
             started: Instant::now(),
+            theme,
             logo: branding::texture(&context.egui_ctx),
         };
         eprintln!("Useful Timer ready");
@@ -363,9 +339,10 @@ impl UsefulTimerApp {
     }
 
     fn sidebar(&mut self, ui: &mut egui::Ui, views: &[TimerView]) {
+        let colors = self.theme.palette();
         ui.horizontal(|ui| {
             ui.label(RichText::new("Your timers").strong());
-            ui.label(RichText::new(format!("{:02}", views.len())).color(MUTED));
+            ui.label(RichText::new(format!("{:02}", views.len())).color(colors.muted));
         });
         ui.add_space(6.0);
         if ui
@@ -390,7 +367,7 @@ impl UsefulTimerApp {
                         RichText::new(
                             "Create your first timer. It will stay above your other windows.",
                         )
-                        .color(MUTED),
+                        .color(colors.muted),
                     );
                 }
                 for view in views {
@@ -399,13 +376,17 @@ impl UsefulTimerApp {
                         let response = ui.add_sized(
                             [ui.available_width(), 112.0],
                             egui::Button::new("")
-                                .fill(if selected { SURFACE } else { SIDEBAR })
+                                .fill(if selected {
+                                    colors.selected
+                                } else {
+                                    colors.sidebar
+                                })
                                 .stroke(egui::Stroke::new(
                                     1.0,
                                     if selected {
-                                        ACCENT.gamma_multiply(0.65)
+                                        colors.accent
                                     } else {
-                                        BORDER
+                                        colors.border
                                     },
                                 ))
                                 .corner_radius(12),
@@ -423,25 +404,25 @@ impl UsefulTimerApp {
                         let mut title = egui::text::LayoutJob::simple_singleline(
                             label.to_owned(),
                             egui::FontId::proportional(16.0),
-                            TEXT,
+                            colors.text,
                         );
                         title.wrap.max_width = rect.width();
                         title.wrap.max_rows = 1;
                         let title = ui.painter().layout_job(title);
-                        ui.painter().galley(rect.min, title, TEXT);
+                        ui.painter().galley(rect.min, title, colors.text);
                         ui.painter().text(
                             rect.min + egui::vec2(0.0, 28.0),
                             egui::Align2::LEFT_TOP,
                             visuals::format_remaining(view.snapshot.remaining),
                             egui::FontId::monospace(26.0),
-                            if selected { ACCENT } else { TEXT },
+                            if selected { colors.accent } else { colors.text },
                         );
                         ui.painter().text(
                             rect.left_bottom(),
                             egui::Align2::LEFT_BOTTOM,
                             view.settings.style.label(),
                             egui::FontId::proportional(12.0),
-                            MUTED,
+                            colors.muted,
                         );
                         ui.painter().text(
                             rect.right_bottom(),
@@ -449,9 +430,9 @@ impl UsefulTimerApp {
                             phase_label(view.snapshot.phase),
                             egui::FontId::proportional(12.0),
                             if view.snapshot.phase == TimerPhase::Running {
-                                ACCENT
+                                colors.accent
                             } else {
-                                MUTED
+                                colors.muted
                             },
                         );
                         if response.on_hover_text(label).clicked() {
@@ -463,16 +444,21 @@ impl UsefulTimerApp {
     }
 
     fn live_controls(&mut self, ui: &mut egui::Ui, view: &TimerView) {
+        let colors = self.theme.palette();
         egui::Frame::new()
-            .fill(SURFACE)
+            .fill(colors.surface)
             .corner_radius(16)
             .inner_margin(22.0)
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(phase_label(view.snapshot.phase)).color(ACCENT));
+                    ui.label(RichText::new(phase_label(view.snapshot.phase)).color(colors.accent));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new("CURRENT COUNTDOWN").small().color(MUTED));
+                        ui.label(
+                            RichText::new("CURRENT COUNTDOWN")
+                                .small()
+                                .color(colors.muted),
+                        );
                     });
                 });
                 ui.label(
@@ -486,12 +472,12 @@ impl UsefulTimerApp {
                 );
                 ui.add(
                     egui::ProgressBar::new(view.snapshot.remaining_fraction)
-                        .fill(ACCENT)
+                        .fill(colors.accent)
                         .desired_height(4.0),
                 );
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    if let Some(action) = timer_controls(ui, view.snapshot.phase) {
+                    if let Some(action) = timer_controls(ui, view.snapshot.phase, colors) {
                         queue(&self.shared, ui.ctx(), Command::Action(view.id, action));
                         self.remaining_dirty = false;
                     }
@@ -551,13 +537,14 @@ impl UsefulTimerApp {
                             "Keeps the current running or paused state. Zero finishes the timer.",
                         )
                         .small()
-                        .color(MUTED),
+                        .color(colors.muted),
                     );
                 });
         }
     }
 
     fn artwork_picker(&mut self, ui: &mut egui::Ui) -> bool {
+        let colors = self.theme.palette();
         ui.label(RichText::new("Desktop artwork").size(17.0).strong());
         let width = (ui.available_width() - 20.0) / 3.0;
         let mut changed = false;
@@ -574,11 +561,19 @@ impl UsefulTimerApp {
                 let response = ui.add_sized(
                     [width, 148.0],
                     egui::Button::new("")
-                        .fill(if selected { RAISED } else { SURFACE })
+                        .fill(if selected {
+                            colors.selected
+                        } else {
+                            colors.surface
+                        })
                         .corner_radius(12)
                         .stroke(egui::Stroke::new(
                             1.0,
-                            if selected { ACCENT } else { BORDER },
+                            if selected {
+                                colors.accent
+                            } else {
+                                colors.border
+                            },
                         )),
                 );
                 response.widget_info(|| {
@@ -601,7 +596,7 @@ impl UsefulTimerApp {
                     egui::Align2::CENTER_CENTER,
                     style.label(),
                     egui::FontId::proportional(14.0),
-                    if selected { ACCENT } else { TEXT },
+                    if selected { colors.accent } else { colors.text },
                 );
                 if response.clicked() && !selected {
                     self.draft.style = style;
@@ -613,6 +608,7 @@ impl UsefulTimerApp {
     }
 
     fn duration_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let colors = self.theme.palette();
         ui.label(RichText::new("Duration").size(17.0).strong());
         let mut changed = ui
             .push_id("configured-duration", |ui| self.duration_input.ui(ui).0)
@@ -632,37 +628,41 @@ impl UsefulTimerApp {
         ui.label(
             RichText::new("Changing duration resets the countdown.")
                 .small()
-                .color(MUTED),
+                .color(colors.muted),
         );
         changed
     }
 
     fn widget_settings(&mut self, ui: &mut egui::Ui) -> bool {
-        ui.label(RichText::new("Widget & sound").size(17.0).strong());
-        let mut changed = false;
-        egui::Grid::new("widget-settings")
-            .spacing([12.0, 12.0])
-            .show(ui, |ui| {
-                let label = ui.label(RichText::new("Size").color(MUTED));
-                changed |= ui
-                    .add(
-                        egui::Slider::new(&mut self.draft.size, 220.0..=460.0)
-                            .suffix(" px")
-                            .integer(),
-                    )
-                    .labelled_by(label.id)
-                    .changed();
-                ui.end_row();
-                let label = ui.label(RichText::new("Volume").color(MUTED));
-                changed |= ui
-                    .add_enabled(
-                        !self.draft.muted,
-                        egui::Slider::new(&mut self.draft.volume, 0.0..=1.0).fixed_decimals(2),
-                    )
-                    .labelled_by(label.id)
-                    .changed();
-                ui.end_row();
-            });
+        let colors = self.theme.palette();
+        ui.label(RichText::new("Widget").size(17.0).strong());
+        ui.horizontal(|ui| {
+            let label = ui.label(RichText::new("Size").color(colors.muted));
+            ui.add(
+                egui::Slider::new(&mut self.draft.size, 220.0..=460.0)
+                    .suffix(" px")
+                    .integer(),
+            )
+            .labelled_by(label.id)
+            .changed()
+        })
+        .inner
+    }
+
+    fn sound_settings(&mut self, ui: &mut egui::Ui) -> bool {
+        let colors = self.theme.palette();
+        ui.label(RichText::new("Sound").size(17.0).strong());
+        let mut changed = ui
+            .horizontal(|ui| {
+                let label = ui.label(RichText::new("Volume").color(colors.muted));
+                ui.add_enabled(
+                    !self.draft.muted,
+                    egui::Slider::new(&mut self.draft.volume, 0.0..=1.0).fixed_decimals(2),
+                )
+                .labelled_by(label.id)
+                .changed()
+            })
+            .inner;
         changed |= ui
             .checkbox(&mut self.draft.muted, "Mute completion sound")
             .changed();
@@ -670,6 +670,7 @@ impl UsefulTimerApp {
     }
 
     fn editor(&mut self, ui: &mut egui::Ui, views: &[TimerView]) {
+        let colors = self.theme.palette();
         egui::ScrollArea::vertical()
             .id_salt(("workspace", self.selected))
             .auto_shrink([false, false])
@@ -677,7 +678,7 @@ impl UsefulTimerApp {
                 ui.set_max_width(ui.available_width().min(860.0));
                 let mut changed = false;
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(if self.selected.is_some() { "TIMER WORKSPACE" } else { "NEW TIMER" }).small().color(MUTED));
+                    ui.label(RichText::new(if self.selected.is_some() { "TIMER WORKSPACE" } else { "NEW TIMER" }).small().color(colors.muted));
                     if let Some(id) = self.selected {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.menu_button("•••", |ui| {
@@ -690,7 +691,7 @@ impl UsefulTimerApp {
                                     ui.close();
                                 }
                                 ui.separator();
-                                if ui.button(RichText::new("Remove timer").color(Color32::from_rgb(239, 151, 136))).clicked() {
+                                if ui.button(RichText::new("Remove timer").color(colors.danger)).clicked() {
                                     queue(&self.shared, ui.ctx(), Command::Remove(id));
                                     ui.close();
                                 }
@@ -710,7 +711,7 @@ impl UsefulTimerApp {
                     "Make it yours. Changes apply instantly."
                 } else {
                     "A countdown with a little character. Always on your desktop."
-                }).color(MUTED));
+                }).color(colors.muted));
                 ui.add_space(8.0);
                 if let Some(view) = views.iter().find(|view| Some(view.id) == self.selected) {
                     self.live_controls(ui, view);
@@ -718,26 +719,21 @@ impl UsefulTimerApp {
                 }
                 changed |= self.artwork_picker(ui);
                 ui.add_space(12.0);
-                if ui.available_width() >= 600.0 {
-                    ui.columns(2, |columns| {
-                        changed |= self.duration_controls(&mut columns[0]);
-                        changed |= self.widget_settings(&mut columns[1]);
-                    });
-                } else {
-                    changed |= self.duration_controls(ui);
-                    ui.add_space(8.0);
-                    changed |= self.widget_settings(ui);
-                }
+                changed |= self.duration_controls(ui);
+                ui.add_space(16.0);
+                changed |= self.widget_settings(ui);
+                ui.add_space(16.0);
+                changed |= self.sound_settings(ui);
                 if changed && self.selected.is_some() {
                     self.submit_settings(ui.ctx());
                 }
                 if let Some(error) = &self.editor_error {
-                    ui.colored_label(Color32::from_rgb(239, 151, 136), error);
+                    ui.colored_label(colors.danger, error);
                 }
                 if self.selected.is_none() {
                     ui.add_space(12.0);
                     ui.horizontal(|ui| {
-                        if ui.add(primary_button("Create timer").min_size(egui::vec2(160.0, 42.0))).clicked() {
+                        if ui.add(primary_button("Create timer", colors).min_size(egui::vec2(160.0, 42.0))).clicked() {
                             self.submit_settings(ui.ctx());
                         }
                         if ui.add(egui::Button::new("Reset form").min_size(egui::vec2(160.0, 42.0))).clicked() {
@@ -747,8 +743,8 @@ impl UsefulTimerApp {
                 }
                 ui.add_space(16.0);
                 ui.separator();
-                ui.label(RichText::new("Drag a desktop widget to move it. Right-click it for controls.").small().color(MUTED));
-                ui.label(RichText::new("Saved on this device · Reopens at full duration · Closing this app quits all timers").small().color(MUTED));
+                ui.label(RichText::new("Drag a desktop widget to move it. Right-click it for controls.").small().color(colors.muted));
+                ui.label(RichText::new("Saved on this device · Reopens at full duration · Closing this app quits all timers").small().color(colors.muted));
             });
     }
 
@@ -878,6 +874,8 @@ impl eframe::App for UsefulTimerApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let colors = self.theme.palette();
+        let previous_theme = self.theme;
         let now = Instant::now();
         let mut views: Vec<_> = {
             let state = self.shared.lock().expect("timer state lock poisoned");
@@ -890,7 +888,7 @@ impl eframe::App for UsefulTimerApp {
         egui::Panel::top("title")
             .frame(
                 egui::Frame::new()
-                    .fill(SIDEBAR)
+                    .fill(colors.sidebar)
                     .inner_margin(egui::Margin::symmetric(24, 16)),
             )
             .show(ui, |ui| {
@@ -899,14 +897,25 @@ impl eframe::App for UsefulTimerApp {
                     ui.add_space(2.0);
                     ui.label(RichText::new("Useful Timer").size(22.0).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(
-                            RichText::new("A little time, well spent.")
-                                .small()
-                                .color(MUTED),
-                        );
+                        egui::ComboBox::from_label("Theme")
+                            .selected_text(self.theme.label())
+                            .width(110.0)
+                            .show_ui(ui, |ui| {
+                                for theme in [Theme::Charcoal, Theme::GitHub] {
+                                    ui.selectable_value(&mut self.theme, theme, theme.label());
+                                }
+                            });
                     });
                 });
             });
+        if self.theme != previous_theme {
+            self.theme.apply(ui.ctx());
+            ui.ctx().request_discard("theme changed");
+            ui.ctx().request_repaint();
+            for window in &self.windows {
+                ui.ctx().request_repaint_of(window.viewport_id);
+            }
+        }
         if self.persistence_warning.is_some()
             || self.operation_warning.is_some()
             || self.audio.warning().is_some()
@@ -914,7 +923,8 @@ impl eframe::App for UsefulTimerApp {
             egui::Panel::bottom("warnings")
                 .frame(
                     egui::Frame::new()
-                        .fill(Color32::from_rgb(67, 48, 32))
+                        .fill(colors.warning_background)
+                        .stroke(egui::Stroke::new(1.0, colors.warning))
                         .inner_margin(12.0),
                 )
                 .show(ui, |ui| {
@@ -926,17 +936,21 @@ impl eframe::App for UsefulTimerApp {
                     .into_iter()
                     .flatten()
                     {
-                        ui.label(RichText::new(warning).color(TEXT));
+                        ui.label(RichText::new(warning).color(colors.text));
                     }
                 });
         }
         egui::Panel::left("timers")
             .resizable(false)
             .exact_size(240.0)
-            .frame(egui::Frame::new().fill(SIDEBAR).inner_margin(20.0))
+            .frame(egui::Frame::new().fill(colors.sidebar).inner_margin(20.0))
             .show(ui, |ui| self.sidebar(ui, &views));
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(BACKGROUND).inner_margin(28.0))
+            .frame(
+                egui::Frame::new()
+                    .fill(colors.background)
+                    .inner_margin(28.0),
+            )
             .show(ui, |ui| self.editor(ui, &views));
 
         // A timer added during this pass must be registered immediately, too.
@@ -955,6 +969,7 @@ impl eframe::App for UsefulTimerApp {
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, theme::STORAGE_KEY, &self.theme);
         let saved = {
             let state = self.shared.lock().expect("timer state lock poisoned");
             SavedState::from_timers(&state.timers)
@@ -1154,10 +1169,8 @@ fn widget_ui(
     }
 }
 
-fn primary_button(label: &str) -> egui::Button<'_> {
-    egui::Button::new(RichText::new(label).color(BACKGROUND).strong())
-        .fill(ACCENT)
-        .stroke(egui::Stroke::NONE)
+fn primary_button<'a>(label: &'a str, colors: &Palette) -> egui::Button<'a> {
+    egui::Button::new(RichText::new(label).color(colors.primary_text).strong()).fill(colors.primary)
 }
 
 fn phase_action(phase: TimerPhase) -> (&'static str, TimerAction) {
@@ -1168,10 +1181,10 @@ fn phase_action(phase: TimerPhase) -> (&'static str, TimerAction) {
     }
 }
 
-fn timer_controls(ui: &mut egui::Ui, phase: TimerPhase) -> Option<TimerAction> {
+fn timer_controls(ui: &mut egui::Ui, phase: TimerPhase, colors: &Palette) -> Option<TimerAction> {
     let (label, action) = phase_action(phase);
     let mut selected = None;
-    let button = primary_button(label).min_size(egui::vec2(100.0, 36.0));
+    let button = primary_button(label, colors).min_size(egui::vec2(100.0, 36.0));
     if ui
         .add_enabled(phase != TimerPhase::Finished, button)
         .clicked()
