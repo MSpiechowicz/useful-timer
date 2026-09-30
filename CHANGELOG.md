@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/MSpiechowicz/useful-timer/compare/v1.2.1...v1.3.0) (2026-09-30)
+
+### Features
+
+* add polished Clockwork Bloom timer ([805113e](https://github.com/MSpiechowicz/useful-timer/commit/805113e78064a2d5619231b9fa7790f33237aad1))
+
 ## [1.2.1](https://github.com/MSpiechowicz/useful-timer/compare/v1.2.0...v1.2.1) (2026-09-30)
 
 ### Bug Fixes
