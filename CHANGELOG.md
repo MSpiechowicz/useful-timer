@@ -17,6 +17,9 @@
 * Reduce Crescent Wand's crystal and its lighting by 25% without moving its seat, remove the bottom-cap white line, and contain and soften the crescent's reflections.
 * Separate Crescent Wand's spiral engravings from its rim highlights and continue the inner highlight smoothly along the crescent.
 * Finish Crescent Wand's lower end cap in gold instead of pink, matching the surrounding gold collar.
+* Center Rocket's upper seam with mirrored endpoints and control points.
+* Smooth Bomb's upper and lower countdown seams with scale-correct edge antialiasing.
+* Brighten Crescent Wand's finale with a white-gold crystal starburst, smoothly feathered bloom, and thin rotating light trails with outward-moving highlights; preserve idle artwork and Reduced motion.
 
 ## [1.1.0](https://github.com/MSpiechowicz/useful-timer/compare/v1.0.0...v1.1.0) (2026-09-30)
 
