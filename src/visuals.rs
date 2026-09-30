@@ -11,8 +11,27 @@ use eframe::egui::{
 };
 use useful_timer::timer::{TimerPhase, TimerSettings, TimerSnapshot, TimerStyle};
 
+mod bloom;
 mod cinematic;
 mod wand;
+
+pub fn destroy_renderer(ctx: &eframe::egui::Context, gl: &eframe::glow::Context) {
+    bloom::destroy(ctx, gl);
+}
+
+/// Fixed design-space envelope for stationary native captions.
+pub fn artwork_top(style: TimerStyle) -> f32 {
+    match style {
+        TimerStyle::Bomb => 34.0,
+        TimerStyle::Hourglass => 45.0,
+        TimerStyle::Rocket => 36.0,
+        TimerStyle::CodeRain => 37.0,
+        TimerStyle::MachineCore => 33.0,
+        TimerStyle::DragonOrb => 54.0,
+        TimerStyle::CrescentWand => 23.0,
+        TimerStyle::ClockworkBloom => bloom::artwork_top(),
+    }
+}
 
 /// Completion effects are finite and settle into a static finished pose.
 pub fn finish_effect_duration(style: TimerStyle) -> Duration {
@@ -24,6 +43,7 @@ pub fn finish_effect_duration(style: TimerStyle) -> Duration {
         TimerStyle::MachineCore => Duration::from_millis(400),
         TimerStyle::DragonOrb => Duration::from_millis(2800),
         TimerStyle::CrescentWand => Duration::from_millis(3400),
+        TimerStyle::ClockworkBloom => Duration::from_millis(3000),
     }
 }
 
@@ -109,6 +129,7 @@ pub fn draw_timer(
             cinematic::dragon_orb(&canvas, snapshot, time, settings.reduced_motion)
         }
         TimerStyle::CrescentWand => wand::draw(&canvas, snapshot, time, settings.reduced_motion),
+        TimerStyle::ClockworkBloom => bloom::draw(&canvas, snapshot),
     }
 }
 

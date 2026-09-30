@@ -268,6 +268,7 @@ pub struct UsefulTimerApp {
     repaint_ids: Vec<(TimerId, bool)>,
     theme: Theme,
     logo: egui::TextureHandle,
+    graphics_context: egui::Context,
     updater: Updater,
     restart_requested: Arc<AtomicBool>,
     update_toast: Option<UpdateToast>,
@@ -354,6 +355,7 @@ impl UsefulTimerApp {
             repaint_ids: Vec::with_capacity(MAX_TIMERS),
             theme,
             logo: branding::texture(&context.egui_ctx),
+            graphics_context: context.egui_ctx.clone(),
             updater: Updater::new(&context.egui_ctx),
             restart_requested,
             update_toast: None,
@@ -1240,6 +1242,12 @@ impl eframe::App for UsefulTimerApp {
         }
     }
 
+    fn on_exit(&mut self, gl: Option<&eframe::glow::Context>) {
+        if let Some(gl) = gl {
+            visuals::destroy_renderer(&self.graphics_context, gl);
+        }
+    }
+
     fn auto_save_interval(&self) -> Duration {
         Duration::from_secs(5)
     }
@@ -1335,15 +1343,7 @@ fn widget_ui(
                 ui.allocate_exact_size(Vec2::splat(width), egui::Sense::click_and_drag());
             visuals::draw_timer(ui.painter(), rect, &view.settings, &view.snapshot);
             // Keep a 12-point gap to each style's upper silhouette at every widget size.
-            let artwork_top = match view.settings.style {
-                TimerStyle::Bomb => 34.0, // Full fuse crest, including its thick stroke.
-                TimerStyle::Hourglass => 45.0,
-                TimerStyle::Rocket => 36.0,
-                TimerStyle::CodeRain => 37.0,
-                TimerStyle::MachineCore => 33.0,
-                TimerStyle::DragonOrb => 54.0,
-                TimerStyle::CrescentWand => 23.0,
-            };
+            let artwork_top = visuals::artwork_top(view.settings.style);
             let badge = egui::Rect::from_center_size(
                 egui::pos2(
                     rect.center().x,
@@ -1380,6 +1380,7 @@ fn widget_ui(
                 TimerStyle::MachineCore => Color32::from_rgb(255, 94, 83),
                 TimerStyle::DragonOrb => Color32::from_rgb(255, 190, 76),
                 TimerStyle::CrescentWand => Color32::from_rgb(174, 224, 255),
+                TimerStyle::ClockworkBloom => Color32::from_rgb(226, 195, 135),
             };
             ui.painter().circle_filled(
                 egui::pos2(badge.left() + 13.0, badge.center().y),

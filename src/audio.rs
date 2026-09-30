@@ -62,6 +62,7 @@ impl AudioEngine {
             TimerStyle::MachineCore => 4,
             TimerStyle::DragonOrb => 5,
             TimerStyle::CrescentWand => 6,
+            TimerStyle::ClockworkBloom => 7,
         };
         // SamplesBuffer::clone shares its Arc-backed samples, with an independent cursor.
         // Adding directly to the mixer overlaps voices instead of queuing them.
@@ -85,6 +86,7 @@ fn synthesize(style: TimerStyle) -> SamplesBuffer {
         TimerStyle::MachineCore => 1.4,
         TimerStyle::DragonOrb => 1.8,
         TimerStyle::CrescentWand => 1.9,
+        TimerStyle::ClockworkBloom => 1.95,
     };
     let length = (length_seconds * SAMPLE_RATE as f32) as usize;
     let mut samples = Vec::with_capacity(length);
@@ -176,6 +178,25 @@ fn synthesize(style: TimerStyle) -> SamplesBuffer {
                             + 0.025 * (TAU * frequency * 2.002 * elapsed).sin());
                 }
                 chime
+            }
+            TimerStyle::ClockworkBloom => {
+                let noise = next_noise(&mut noise_state);
+                filtered_noise += 0.12 * (noise - filtered_noise);
+                let latch = filtered_noise * (-time * 48.0).exp() * 0.20;
+                let mut chime = 0.0;
+                for (onset, frequency, strength) in [
+                    (0.25, 587.33, 0.18),
+                    (0.43, 880.0, 0.13),
+                    (0.61, 1174.66, 0.08),
+                ] {
+                    let elapsed = (time - onset).max(0.0);
+                    let envelope = (elapsed / 0.045).min(1.0) * (-elapsed * 3.4).exp();
+                    chime += strength
+                        * envelope
+                        * ((TAU * frequency * elapsed).sin()
+                            + 0.12 * (TAU * frequency * 2.006 * elapsed).sin());
+                }
+                latch + chime
             }
         };
         // Short ramps prevent clicks; every preset ends at zero and cannot loop.
