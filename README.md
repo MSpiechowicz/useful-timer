@@ -28,6 +28,63 @@ The GitHub theme uses cool neutrals (`#0d1117` background, `#161b22` surfaces), 
 
 The app uses a reusable U-shaped clock mark in its header and native window icons. The scalable source is [`assets/useful-timer.svg`](assets/useful-timer.svg); [`assets/useful-timer.png`](assets/useful-timer.png) is the transparent 256×256 app icon, embedded in the binary. The header uses mipmapped linear filtering to preserve antialiased edges when reducing the icon to its display size. Both assets are available under the repository license.
 
+## Install (no Rust required)
+
+Install the latest [GitHub release](https://github.com/MSpiechowicz/useful-timer/releases) for your user account. No administrator access is required. Close Useful Timer before updating, then rerun the same installer; saved timers and preferences are retained.
+
+These commands become available once the installer files reach `main` and a release containing the new archives and SHA-256 files is published. Older releases without checksum files cannot be installed with these scripts.
+
+### Linux and macOS
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/MSpiechowicz/useful-timer/main/install.sh | bash
+```
+
+Supported binaries: Linux x86-64 (glibc 2.39+, such as Ubuntu 24.04 or newer), Intel macOS, and Apple Silicon macOS. The installer selects the native architecture, including Apple Silicon when run under Rosetta. Linux ARM and musl-based distributions such as Alpine are not supported by these releases.
+
+| Platform | Installation | Launch |
+| --- | --- | --- |
+| Linux | `~/.local/bin/useful-timer`; launcher, icon, and release documentation under `${XDG_DATA_HOME:-~/.local/share}` | Applications menu → **Useful Timer**, or `useful-timer` |
+| macOS | `~/Applications/Useful Timer.app`; command symlink at `~/.local/bin/useful-timer` | Open the app in `~/Applications`, or `useful-timer` |
+
+If `~/.local/bin` is not on `PATH`, the installer prints the shell-profile entry to add. It does not edit your shell configuration. Linux still needs a working X11/XWayland desktop, ALSA, and OpenGL drivers. Install missing runtime dependencies separately:
+
+```sh
+# Ubuntu 24.04 / Debian with glibc 2.39 or newer
+sudo apt-get install -y ca-certificates curl libasound2t64 libx11-6 libxcursor1 libxrandr2 libxi6 libxkbcommon0 libxkbcommon-x11-0 libgl1 xwayland
+
+# Arch Linux
+sudo pacman -S --needed ca-certificates curl alsa-lib libx11 libxcursor libxrandr libxi libxkbcommon libxkbcommon-x11 mesa xorg-xwayland
+```
+
+### Windows
+
+Run in **PowerShell**, not Command Prompt; Windows x86-64 is supported:
+
+```powershell
+curl.exe -fsSL https://raw.githubusercontent.com/MSpiechowicz/useful-timer/main/install.ps1 -o "$env:TEMP\\useful-timer-install.ps1"; if ($LASTEXITCODE -eq 0) { powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\\useful-timer-install.ps1" } else { throw 'Installer download failed' }
+```
+
+The installer supports Windows PowerShell 5.1 and PowerShell 7. It installs to `%LOCALAPPDATA%\\Programs\\Useful Timer`, creates a **Useful Timer** Start menu shortcut, and adds the installation directory to your **user** `PATH`. Open the Start menu shortcut immediately, or run `useful-timer` in a new terminal. The command bypasses script execution policy only for that PowerShell process; it does not change the system policy. Windows ARM and 32-bit Windows are not supported.
+
+### Versions, trust, and removal
+
+The scripts download over HTTPS and verify the archive's SHA-256 checksum **before** replacing an installed executable. Checksums detect corrupted or mismatched downloads; they are supplied by the same release publisher and are not a signing/notarization guarantee. Releases remain unsigned. macOS may require approval under **System Settings → Privacy & Security**, and Windows may show SmartScreen warnings. Review the source and publisher before approving; the installers do not disable these protections.
+
+To review the script or choose a version/location, download it instead of piping it, then run:
+
+```sh
+bash install.sh --version 1.2.3 --bin-dir "$HOME/.local/bin"
+```
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\install.ps1 -Version 1.2.3 -InstallDir "$env:LOCALAPPDATA\\Programs\\Useful Timer"
+```
+
+`1.2.3` is an example; use an existing release with checksum assets. Omitting the version installs the latest stable release. `--help` / `-Help` lists the options. The macOS app bundle always lives in `~/Applications`; `--bin-dir` changes only its terminal symlink.
+
+To uninstall, close the app and remove the files listed above. On Linux, also remove `applications/useful-timer.desktop` and the release's `LICENSE`, `README.md`, and `useful-timer.png` from the data directory, leaving `app.ron` if you want to keep your timers. On Windows, also remove the Start menu shortcut and the installation directory's entry from your user `PATH`. Settings live separately as documented below; removal does not require deleting them.
+
 ## Build and run
 
 Run the following commands from this repository's checkout. Build on the operating system where you intend to run the app; these instructions do not configure cross-compilation.
@@ -113,7 +170,7 @@ cargo install --path . --locked
 useful-timer
 ```
 
-Cargo installs the release binary into `~/.cargo/bin` on Linux/macOS or `%USERPROFILE%\.cargo\bin` on Windows by default. Ensure that directory is on `PATH`. No packaged installer, macOS app bundle, desktop launcher, signing, or automatic updater is supplied. Linux binaries still need the system libraries and display environment described above.
+Cargo installs the release binary into `~/.cargo/bin` on Linux/macOS or `%USERPROFILE%\.cargo\bin` on Windows by default. Ensure that directory is on `PATH`. This source-build command does not create desktop launchers or a macOS app bundle; use the release installers above for those. No signing or automatic updater is supplied. Linux binaries still need the system libraries and display environment described above.
 
 ## Local settings and privacy
 
@@ -165,6 +222,15 @@ cargo build --release --locked
 
 The GitHub Actions workflow in [`.github/workflows/build.yml`](.github/workflows/build.yml) runs these checks on Ubuntu 24.04, macOS, and Windows with Rust 1.95.0 and locked dependencies. Its permissions are read-only; it does not sign, publish, or upload releases. The workflow is configured, but no completed CI runs are claimed here. Deterministic automated tests do not replace desktop testing of compositor and audio behavior.
 
+Installer and release-tooling checks also run in that workflow:
+
+```sh
+node --test .github/release/cargo.test.mjs
+python3 .github/tests/installers.py
+```
+
+On Windows, run `.github/tests/installers.ps1` in Windows PowerShell 5.1 or PowerShell 7. Tests use local release fixtures, cover checksum/download failures without replacing the existing app, and exercise installation and upgrades. Windows CI also launches the installed fixture executables and checks the actual Start menu shortcut and user `PATH`; it restores those user settings afterward. Release-stamping tests cover both LF and Windows CRLF files while preserving dependency versions and line endings. Unix tests exercise Intel/Apple Silicon selection and macOS bundle metadata; they do not prove macOS desktop behavior.
+
 ### Automatic releases
 
 [`.github/workflows/release.yml`](.github/workflows/release.yml) runs on pushes to `main`; it can also be started manually from the Actions tab on `main`. [semantic-release](https://semantic-release.gitbook.io/semantic-release/) determines the next version from Conventional Commits since the last `v*` release tag:
@@ -178,9 +244,9 @@ The GitHub Actions workflow in [`.github/workflows/build.yml`](.github/workflows
 
 Use these subjects for commits reaching `main`, including the PR title when squash-merging. Ordinary merge commits do not hide Conventional Commits in the merged branch. Existing unformatted commit messages do not trigger a release. With no previous release tag, the first qualifying change produces **1.0.0**, independent of the initial Cargo development version; do not bump versions manually.
 
-The workflow plans the version without publishing, stamps `Cargo.toml` and the app's entry in `Cargo.lock` in each build checkout, and runs formatting, compilation, tests, Clippy, and locked release builds before publishing. It uploads archives containing the executable, `LICENSE`, and `README.md` for Linux x86-64 (`.tar.gz`, Ubuntu 24.04), Intel macOS (`.tar.gz`, macOS 14), and Windows x86-64 (`.zip`, MSVC). These are unsigned binaries, not installers or macOS app bundles. Linux still needs the runtime libraries and X11/XWayland environment described above.
+The workflow plans the version without publishing, stamps `Cargo.toml` and the app's entry in `Cargo.lock` in each build checkout (accepting LF and CRLF line endings), and runs formatting, compilation, tests, Clippy, and locked release builds before publishing. It uploads archives containing the executable, `LICENSE`, and `README.md` for Linux x86-64 (`.tar.gz`, Ubuntu 24.04), Intel and Apple Silicon macOS (`.tar.gz`, macOS 14), and Windows x86-64 (`.zip`, MSVC). Unix archives also include the PNG app icon. Every archive has a companion `<archive>.sha256` file. The binaries remain unsigned; the Unix installer creates the macOS app bundle or Linux desktop launcher locally, while the Windows installer creates a Start menu shortcut. Linux still needs the runtime libraries and X11/XWayland environment described above.
 
-Only after every platform succeeds does semantic-release commit the Cargo versions and generated `CHANGELOG.md` as `chore(release): <version> [skip ci]`, create a `v<version>` tag, and publish the GitHub release with generated notes and all three archives. Publishing rejects missing archives or a version different from the one built. Release runs are serialized; a non-release change skips builds and publication. Nothing is published to npm or crates.io. Node.js 24.10.0 and the locked npm dependencies are used only for release automation; the desktop application remains Rust-only.
+Only after every platform succeeds does semantic-release commit the Cargo versions and generated `CHANGELOG.md` as `chore(release): <version> [skip ci]`, create a `v<version>` tag, and publish the GitHub release with generated notes, all four archives, and their checksum files. Publishing rejects missing/empty archives, missing/mismatched checksums, or a version different from the one built. Release runs are serialized; a non-release change skips builds and publication. Nothing is published to npm or crates.io. Node.js 24.10.0 and the locked npm dependencies are used only for release automation; the desktop application remains Rust-only.
 
 The planning and publishing jobs request `contents: write`; build jobs remain read-only. The default `GITHUB_TOKEN` is sufficient when it can push release commits to `main`. If branch protection or repository rules require a bypass, configure a narrowly scoped GitHub App token or personal access token as the Actions secret **`RELEASE_TOKEN`**, with repository contents read/write permission and permission to push release commits under those rules. The workflow uses that secret when present. Do not disable branch protections globally. Releases created with the default `GITHUB_TOKEN` do not trigger other release-event workflows; use `RELEASE_TOKEN` if those are needed. No completed hosted release run is claimed here.
 
