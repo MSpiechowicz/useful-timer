@@ -30,7 +30,7 @@ The app uses a reusable U-shaped clock mark in its header and native window icon
 
 ## Install (no Rust required)
 
-Install the latest [GitHub release](https://github.com/MSpiechowicz/useful-timer/releases) for your user account. No administrator access is required. Close Useful Timer before updating, then rerun the same installer; saved timers and preferences are retained.
+Install the latest [GitHub release](https://github.com/MSpiechowicz/useful-timer/releases) for your user account. No administrator access is required. The app checks for newer stable releases at startup and offers an in-app install action. For manual updates, close Useful Timer and rerun the same installer; saved timers and preferences are retained.
 
 These commands become available once the installer files reach `main` and a release containing the new archives and SHA-256 files is published. Older releases without checksum files cannot be installed with these scripts.
 
@@ -84,6 +84,16 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\install.ps1 -Version 
 `1.2.3` is an example; use an existing release with checksum assets. Omitting the version installs the latest stable release. `--help` / `-Help` lists the options. The macOS app bundle always lives in `~/Applications`; `--bin-dir` changes only its terminal symlink.
 
 To uninstall, close the app and remove the files listed above. On Linux, also remove `applications/useful-timer.desktop` and the release's `LICENSE`, `README.md`, and `useful-timer.png` from the data directory, leaving `app.ron` if you want to keep your timers. On Windows, also remove the Start menu shortcut and the installation directory's entry from your user `PATH`. Settings live separately as documented below; removal does not require deleting them.
+
+### In-app updates
+
+Startup checks run in a background thread with a 15-second timeout; timers do not depend on the network. A newer stable version is offered only when its release includes an archive and SHA-256 file for the current platform. Equal/older versions, prereleases, and repositories without a published release do not produce an update notification. Connection/API failures expose **Check again** and a manual-release link.
+
+- Choose **Install update** (Linux/macOS) or **Install and restart** (Windows), or **Later** to dismiss the offer until the next launch. Downloads begin only after choosing Install.
+- The app runs the installer embedded in its own binary, pinned to the offered version; it does not download and execute installer scripts from `main`. Archive checksums are verified before replacement. Installation success and failure appear as dismissible bottom-right toasts that expire after ten seconds. Failed verification leaves the executable unchanged, with Install available for retry.
+- Linux/macOS keep running until you choose **Restart now**, or use the new binary on your next launch. Windows downloads, verifies, and stages the update while the app is still open, shows a checksum-success toast for three seconds, then closes normally, replaces the executable, and reopens it. Replacement errors after Windows shutdown use a native error dialog and reopen the existing executable when available.
+- Keep the app open while installing. Normal restart saves settings and preferences, but **running/paused countdowns reset to their full duration**, just like any other restart. The updater does not preserve running countdown progress.
+- Linux and Windows update the current executable's directory, including custom installer locations. The binary must retain its original name. macOS in-app installation requires `~/Applications/Useful Timer.app`; source builds and moved bundles need the manual installer. Existing platform/runtime requirements and unsigned-release protections still apply. Updating a source build on Linux/Windows replaces it with the published release binary.
 
 ## Build and run
 
@@ -170,11 +180,13 @@ cargo install --path . --locked
 useful-timer
 ```
 
-Cargo installs the release binary into `~/.cargo/bin` on Linux/macOS or `%USERPROFILE%\.cargo\bin` on Windows by default. Ensure that directory is on `PATH`. This source-build command does not create desktop launchers or a macOS app bundle; use the release installers above for those. No signing or automatic updater is supplied. Linux binaries still need the system libraries and display environment described above.
+Cargo installs the release binary into `~/.cargo/bin` on Linux/macOS or `%USERPROFILE%\.cargo\bin` on Windows by default. Ensure that directory is on `PATH`. This source-build command does not create desktop launchers or a macOS app bundle; use the release installers above for those. Releases are unsigned. Source builds include the startup updater, subject to the installation-location restrictions above. Linux binaries still need the system libraries and display environment described above.
 
 ## Local settings and privacy
 
 The app has no accounts, cloud synchronization, telemetry, or network-dependent timer features. Timer labels and settings are stored locally as unencrypted RON data; do not treat them as secret storage.
+
+Each launch requests the latest stable release metadata from GitHub over HTTPS, using the app version in its User-Agent. GitHub receives the normal request metadata, including the source IP address; no timer labels or saved settings are sent. Installing an update downloads its archive and checksum from GitHub. Checks and installation run off the UI thread; timers remain usable when GitHub is unavailable.
 
 Timer identities, settings, widget positions, and per-widget movement locks are saved in one eframe-managed `app.ron` file under the `useful-timer.state` key (format version 1). Widget positions use physical desktop pixels; restoration selects and clamps to monitor bounds in that same coordinate space, accounting for the target monitor's scale and UI zoom. The same file also holds the theme under `useful-timer.theme` and eframe UI/window state. Older settings without a theme preference use GitHub. The app requests autosave every five seconds and saves on normal exit.
 
@@ -206,8 +218,9 @@ To clear all saved settings, quit the app first, then delete the `app.ron` file 
 - **Artwork attachment corrections verified on Linux:** native Glow renders at 220 and 460 points, plus enlarged detail views, checked the gold fitting above the bomb shell, seams following the sphere and tapering smoothly just inside its border without blunt ends, and the clock glass without the stray horizontal highlight. A small leftward seam alignment correction keeps the right ends clear of the border. The fitting uses continuously shaded curved side walls instead of dark underside discs, a subtle contact shadow, and a front socket lip that hides the fuse end. Full and nearly spent fuses were checked. Running and launch-state rocket renders checked the flame emerging from inside the nozzle opening; an idle render checked the unlit engine.
 - **GitHub-inspired theme verified on Linux:** native window captures checked the new-timer form, selected timer/artwork cards, idle/running/paused countdowns, blue Create/Start/Pause/Resume buttons, and the workspace menu with its red removal action. Calculated sRGB text contrast is 4.63:1 for white on primary blue, 17.39:1 for main text on the workspace background, 6.21:1 for muted text on the hover surface, and 5.38:1 for blue text on the selected surface. Layout and timer artwork are unchanged.
 - **Theme selection and stacked settings verified on Linux:** native captures checked live GitHub/Charcoal switching, Charcoal restored after restart, the header without its tagline, and the vertical Duration → Widget → Sound sections. Sound's mute control disabled the volume slider; unmuting was confirmed in saved timer settings. Theme preference is stored separately from timer data.
+- **Updater verified on Linux:** native UI captures checked the available-version banner, checksum-failure toast, successful retry and checksum-success toast, automatic toast dismissal, and the persistent Restart action. A local release fixture replaced the running executable in a custom directory; Restart launched the updated fixture after normal shutdown, and the Charcoal preference remained in saved settings. A normal app startup also discovered the published GitHub version 1.0.0 and dismissed its offer with Later. No GitHub release was published by this verification. macOS and Windows updater behavior still requires native validation.
 - **macOS and Windows:** source and CI are configured for native builds, but local builds and desktop behavior on these platforms have not been verified. Their transparency, positioning, always-on-top behavior, and audio still need real-desktop validation.
-- No native Wayland widget support, tray mode, background service, cloud features, import/export, custom animation/sound editor, or updater. Desktop placement and stacking remain subject to the operating system and window manager.
+- No native Wayland widget support, tray mode, background service, cloud features, import/export, or custom animation/sound editor. Desktop placement and stacking remain subject to the operating system and window manager.
 - Audio uses the default output device. A Linux smoke run with an unavailable audio device verified the visible warning and a countdown still reaching **Done** with its completion animation. Initialization and stream errors are reported when detected; physical device disconnection and reconnection have not been desktop-tested.
 
 ## Development checks and CI
@@ -229,7 +242,7 @@ node --test .github/release/cargo.test.mjs
 python3 .github/tests/installers.py
 ```
 
-On Windows, run `.github/tests/installers.ps1` in Windows PowerShell 5.1 or PowerShell 7. Tests use local release fixtures, cover checksum/download failures without replacing the existing app, and exercise installation and upgrades. Windows CI also launches the installed fixture executables and checks the actual Start menu shortcut and user `PATH`; it restores those user settings afterward. Release-stamping tests cover both LF and Windows CRLF files while preserving dependency versions and line endings. Unix tests exercise Intel/Apple Silicon selection and macOS bundle metadata; they do not prove macOS desktop behavior.
+On Windows, run `.github/tests/installers.ps1` in Windows PowerShell 5.1 or PowerShell 7. Tests use local release fixtures, cover checksum/download failures without replacing the existing app or requesting shutdown, and exercise installation and upgrades. Windows CI also launches the installed fixture executables, checks the actual Start menu shortcut and user `PATH`, and exercises the verified-download/parent-exit handoff and temporary-helper cleanup; it restores those user settings afterward. Release-stamping tests cover both LF and Windows CRLF files while preserving dependency versions and line endings. Unix tests exercise Intel/Apple Silicon selection and macOS bundle metadata; they do not prove macOS desktop behavior. Rust updater tests exercise numeric version ordering, stable-release eligibility, platform archive/checksum requirements, and local HTTP responses for new releases, no releases, rate limits, and malformed metadata.
 
 ### Automatic releases
 

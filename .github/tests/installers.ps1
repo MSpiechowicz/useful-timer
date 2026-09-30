@@ -43,10 +43,12 @@ function New-Fixture([string]$executable = '', [switch]$OmitExecutable) {
 }
 function Expect-Failure([string]$reason) {
     $failed = $false
-    try { & $installer -InstallDir $destination }
+    $ready = Join-Path $work 'failed-update.ready'
+    try { & $installer -InstallDir $destination -Version 1.2.3 -WaitForProcessId $PID -ReadyFile $ready -Restart }
     catch { $failed = $true; Write-Output "PASS: $reason ($($_.Exception.Message))" }
     Assert $failed "Expected installation to fail: $reason"
     Assert ((Get-FileHash -LiteralPath (Join-Path $destination 'useful-timer.exe')).Hash -eq $script:before) 'Failed install replaced existing executable'
+    Assert (-not (Test-Path -LiteralPath $ready)) 'Failed verification requested app shutdown'
 }
 try {
     $env:OS = 'Windows_NT'
@@ -83,6 +85,30 @@ try {
         $entries = @([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -eq $destination })
         Assert ($entries.Count -eq 1) 'Installer duplicated or omitted user PATH entry'
         Write-Output 'PASS: Windows install, launch, shortcut, update, and idempotent user PATH'
+
+        # In-app handoff must finish only after the parent exits, then remove its
+        # temporary helper. Use a real process rather than mocking Wait-Process.
+        $helper = Join-Path $work 'updater helper.ps1'
+        Copy-Item -LiteralPath $installer -Destination $helper
+        $ready = Join-Path $work 'verified-update.ready'
+        $quotedReady = $ready.Replace("'", "''")
+        $parentCode = "`$deadline = (Get-Date).AddSeconds(30); while (-not (Test-Path -LiteralPath '$quotedReady')) { if ((Get-Date) -gt `$deadline) { exit 2 }; Start-Sleep -Milliseconds 20 }; if ((Get-Content -LiteralPath '$quotedReady' -Raw) -ne 'verified') { exit 3 }; exit 0"
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($parentCode))
+        $parent = Start-Process powershell.exe -ArgumentList '-NoProfile', '-EncodedCommand', $encoded -PassThru -WindowStyle Hidden
+        try {
+            & $helper -Version 1.2.3 -InstallDir $destination -WaitForProcessId $parent.Id -ReadyFile $ready -SelfRemove
+            $parent.Refresh()
+            Assert $parent.HasExited 'Update finished before the parent exited'
+            Assert ($parent.ExitCode -eq 0) 'Parent did not receive verified download before exiting'
+            Assert (-not (Test-Path -LiteralPath $ready)) 'Updater left its readiness marker behind'
+            Assert (-not (Test-Path -LiteralPath $helper)) 'Updater left its temporary script behind'
+            $actual = & (Join-Path $destination 'useful-timer.exe')
+            Assert ($LASTEXITCODE -eq 0 -and $actual -eq (& hostname.exe)) 'Handoff did not leave a runnable app'
+            Write-Output 'PASS: updater waits for parent exit and cleans up its helper'
+        } finally {
+            if (-not $parent.HasExited) { $parent.Kill() }
+            $parent.Dispose()
+        }
     } else {
         Write-Output 'SKIP: native Windows shortcut, PATH, and launch checks require Windows'
     }
