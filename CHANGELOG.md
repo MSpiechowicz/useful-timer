@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/MSpiechowicz/useful-timer/compare/v1.0.0...v1.1.0) (2026-09-30)
+
+### Features
+
+* add startup updates with checksum result toasts ([2ee6c2e](https://github.com/MSpiechowicz/useful-timer/commit/2ee6c2e7629d59cabd0e9fba1bd781c54af3175c))
+
 ## 1.0.0 (2026-09-30)
 
 ### Features
