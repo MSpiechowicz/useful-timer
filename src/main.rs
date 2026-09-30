@@ -4,6 +4,7 @@
 )]
 
 mod app;
+mod branding;
 mod visuals;
 
 use eframe::egui;
@@ -13,12 +14,12 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_title("Useful Timer")
             .with_app_id("useful-timer")
-            .with_icon(egui::IconData::default())
+            .with_icon(branding::icon())
             // All glow viewports share the root GL config, so request alpha here.
             // The control panel paints an opaque background itself.
             .with_transparent(true)
-            .with_inner_size([900.0, 760.0])
-            .with_min_inner_size([700.0, 620.0]),
+            .with_inner_size([1060.0, 820.0])
+            .with_min_inner_size([800.0, 640.0]),
         renderer: eframe::Renderer::Glow,
         ..Default::default()
     };

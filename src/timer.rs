@@ -132,6 +132,7 @@ enum Runtime {
 pub struct Timer {
     pub id: TimerId,
     pub position: Option<WidgetPosition>,
+    pub locked: bool,
     settings: TimerSettings,
     runtime: Runtime,
     run: u64,
@@ -143,6 +144,7 @@ impl Timer {
         Ok(Self {
             id,
             position: None,
+            locked: false,
             settings,
             runtime: Runtime::Idle,
             run: 0,
