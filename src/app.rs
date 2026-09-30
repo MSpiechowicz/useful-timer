@@ -1,6 +1,9 @@
 use std::{
     collections::VecDeque,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -12,6 +15,7 @@ use useful_timer::{
         CompletionEvent, Timer, TimerAction, TimerId, TimerPhase, TimerSettings, TimerSnapshot,
         TimerStyle, WidgetPosition, next_timer_id,
     },
+    update::{RELEASES_URL, UpdateState, Updater},
 };
 
 use crate::{
@@ -23,6 +27,12 @@ use crate::{
 const FRAME_INTERVAL: Duration = Duration::from_millis(33);
 const LOGIC_INTERVAL: Duration = Duration::from_millis(100);
 const WIDGET_TITLE_HEIGHT: f32 = 50.0;
+
+struct UpdateToast {
+    message: String,
+    success: bool,
+    expires: Instant,
+}
 
 enum Command {
     Action(TimerId, TimerAction),
@@ -198,10 +208,14 @@ pub struct UsefulTimerApp {
     started: Instant,
     theme: Theme,
     logo: egui::TextureHandle,
+    updater: Updater,
+    restart_requested: Arc<AtomicBool>,
+    update_toast: Option<UpdateToast>,
+    update_close_at: Option<Instant>,
 }
 
 impl UsefulTimerApp {
-    pub fn new(context: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(context: &eframe::CreationContext<'_>, restart_requested: Arc<AtomicBool>) -> Self {
         let theme = context
             .storage
             .and_then(|storage| eframe::get_value::<Theme>(storage, theme::STORAGE_KEY))
@@ -281,9 +295,148 @@ impl UsefulTimerApp {
             started: Instant::now(),
             theme,
             logo: branding::texture(&context.egui_ctx),
+            updater: Updater::new(&context.egui_ctx),
+            restart_requested,
+            update_toast: None,
+            update_close_at: None,
         };
         eprintln!("Useful Timer ready");
         app
+    }
+
+    fn update_notification(&mut self, ui: &mut egui::Ui) {
+        if matches!(
+            self.updater.state,
+            UpdateState::Current | UpdateState::Dismissed
+        ) {
+            return;
+        }
+        let colors = self.theme.palette();
+        egui::Panel::top("update_notification")
+            .frame(
+                egui::Frame::new()
+                    .fill(colors.sidebar)
+                    .stroke(egui::Stroke::new(1.0, colors.border))
+                    .inner_margin(egui::Margin::symmetric(24, 12)),
+            )
+            .show(ui, |ui| {
+                let mut install = false;
+                let mut retry = false;
+                let mut dismiss = false;
+                match &self.updater.state {
+                    UpdateState::Checking => {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label("Checking for updates…");
+                        });
+                    }
+                    UpdateState::Available(release) => {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(RichText::new(format!(
+                                "Useful Timer {} is ready to install.",
+                                release.version
+                            )).strong());
+                            install = ui.button(if cfg!(target_os = "windows") {
+                                "Install and restart"
+                            } else {
+                                "Install update"
+                            }).clicked();
+                            dismiss = ui.button("Later").clicked();
+                            ui.hyperlink_to("Release notes", RELEASES_URL);
+                        });
+                        ui.small("Restarting restores timers at their full duration; running countdowns do not survive a restart.");
+                    }
+                    UpdateState::Installing => {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label("Installing update and verifying its checksum…");
+                        });
+                        ui.small("Keep the app open until installation finishes.");
+                    }
+                    UpdateState::Installed => {
+                        ui.horizontal(|ui| {
+                            ui.label("Update installed. Restart to use the new version.");
+                            if ui.button("Restart now").clicked() {
+                                self.restart_requested.store(true, Ordering::Relaxed);
+                                ui.ctx().send_viewport_cmd_to(ViewportId::ROOT, ViewportCommand::Close);
+                            }
+                        });
+                        ui.small("Restarting resets running and paused timers to their full duration.");
+                    }
+                    UpdateState::Failed(error) => {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(RichText::new(error).color(colors.warning));
+                            retry = ui.button("Check again").clicked();
+                            dismiss = ui.button("Dismiss").clicked();
+                            ui.hyperlink_to("Releases / manual install", RELEASES_URL);
+                        });
+                    }
+                    UpdateState::Closing => {
+                        ui.label("Closing to install the update. Useful Timer will reopen automatically.");
+                    }
+                    UpdateState::Current | UpdateState::Dismissed => {}
+                }
+                if install {
+                    self.updater.install(ui.ctx());
+                } else if retry {
+                    self.updater.check(ui.ctx());
+                } else if dismiss {
+                    self.updater.state = UpdateState::Dismissed;
+                }
+            });
+    }
+
+    fn show_update_toast(&mut self, ctx: &egui::Context) {
+        let Some(toast) = &self.update_toast else {
+            return;
+        };
+        let now = Instant::now();
+        if now >= toast.expires {
+            self.update_toast = None;
+            return;
+        }
+        ctx.request_repaint_after_for(toast.expires - now, ViewportId::ROOT);
+        let colors = self.theme.palette();
+        let accent = if toast.success {
+            Color32::from_rgb(118, 197, 144)
+        } else {
+            colors.warning
+        };
+        let mut dismiss = false;
+        egui::Area::new(egui::Id::new("update_toast"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-20.0, -20.0))
+            .show(ctx, |ui| {
+                egui::Frame::new()
+                    .fill(colors.raised)
+                    .stroke(egui::Stroke::new(1.0, accent))
+                    .corner_radius(8)
+                    .inner_margin(16.0)
+                    .show(ui, |ui| {
+                        ui.set_width(380.0_f32.min(ctx.content_rect().width() - 72.0).max(160.0));
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(if toast.success {
+                                    "Checksum verified"
+                                } else {
+                                    "Update failed"
+                                })
+                                .strong()
+                                .color(accent),
+                            );
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    dismiss = ui.small_button("Dismiss").clicked();
+                                },
+                            );
+                        });
+                        ui.label(&toast.message);
+                    });
+            });
+        if dismiss {
+            self.update_toast = None;
+        }
     }
 
     fn select(&mut self, view: &TimerView) {
@@ -793,7 +946,37 @@ impl UsefulTimerApp {
 
 impl eframe::App for UsefulTimerApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.updater.poll();
         let now = Instant::now();
+        if let Some(result) = self.updater.take_installation_result() {
+            let success = result.is_ok();
+            let closing = matches!(self.updater.state, UpdateState::Closing);
+            let message = match result {
+                Ok(()) if closing => "Download verified. Restarting to finish installation…".into(),
+                Ok(()) => "Update installed successfully. Restart when you are ready.".into(),
+                Err(error) => error,
+            };
+            let duration = if closing {
+                Duration::from_secs(3)
+            } else {
+                Duration::from_secs(10)
+            };
+            self.update_toast = Some(UpdateToast {
+                message,
+                success,
+                expires: now + duration,
+            });
+            if closing {
+                self.update_close_at = Some(now + duration);
+            }
+        }
+        if let Some(deadline) = self.update_close_at {
+            if now >= deadline {
+                ctx.send_viewport_cmd_to(ViewportId::ROOT, ViewportCommand::Close);
+            } else {
+                ctx.request_repaint_after_for(deadline - now, ViewportId::ROOT);
+            }
+        }
         let mut next_tick = None;
         let selection_removed;
         {
@@ -916,6 +1099,7 @@ impl eframe::App for UsefulTimerApp {
                 ui.ctx().request_repaint_of(window.viewport_id);
             }
         }
+        self.update_notification(ui);
         if self.persistence_warning.is_some()
             || self.operation_warning.is_some()
             || self.audio.warning().is_some()
@@ -966,6 +1150,7 @@ impl eframe::App for UsefulTimerApp {
             );
         }
         self.register_widgets(ui.ctx(), &views);
+        self.show_update_toast(ui.ctx());
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

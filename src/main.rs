@@ -9,6 +9,10 @@ mod theme;
 mod visuals;
 
 use eframe::egui;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -38,9 +42,26 @@ fn main() -> eframe::Result {
         }
     };
 
+    let restart_requested = Arc::new(AtomicBool::new(false));
+    let app_restart_requested = Arc::clone(&restart_requested);
+    // Capture before Unix atomic replacement: current_exe can later end in " (deleted)".
+    let executable =
+        std::env::current_exe().map_err(|error| eframe::Error::AppCreation(Box::new(error)))?;
     eframe::run_native(
         "Useful Timer",
         options,
-        Box::new(|context| Ok(Box::new(app::UsefulTimerApp::new(context)))),
-    )
+        Box::new(move |context| {
+            Ok(Box::new(app::UsefulTimerApp::new(
+                context,
+                app_restart_requested,
+            )))
+        }),
+    )?;
+    // run_native returns after normal shutdown has saved settings and released resources.
+    if restart_requested.load(Ordering::Relaxed) {
+        std::process::Command::new(executable)
+            .spawn()
+            .map_err(|error| eframe::Error::AppCreation(Box::new(error)))?;
+    }
+    Ok(())
 }
