@@ -10,7 +10,7 @@ const SAMPLE_RATE: u32 = 48_000;
 
 pub struct AudioEngine {
     sink: Option<MixerDeviceSink>,
-    buffers: [SamplesBuffer; 3],
+    buffers: [SamplesBuffer; TimerStyle::ALL.len()],
     warning: Arc<OnceLock<String>>,
 }
 
@@ -58,6 +58,10 @@ impl AudioEngine {
             TimerStyle::Bomb => 0,
             TimerStyle::Hourglass => 1,
             TimerStyle::Rocket => 2,
+            TimerStyle::CodeRain => 3,
+            TimerStyle::MachineCore => 4,
+            TimerStyle::DragonOrb => 5,
+            TimerStyle::CrescentWand => 6,
         };
         // SamplesBuffer::clone shares its Arc-backed samples, with an independent cursor.
         // Adding directly to the mixer overlaps voices instead of queuing them.
@@ -77,6 +81,10 @@ fn synthesize(style: TimerStyle) -> SamplesBuffer {
         TimerStyle::Bomb => 1.1,
         TimerStyle::Hourglass => 1.6,
         TimerStyle::Rocket => 1.35,
+        TimerStyle::CodeRain => 1.5,
+        TimerStyle::MachineCore => 1.4,
+        TimerStyle::DragonOrb => 1.8,
+        TimerStyle::CrescentWand => 1.9,
     };
     let length = (length_seconds * SAMPLE_RATE as f32) as usize;
     let mut samples = Vec::with_capacity(length);
@@ -125,6 +133,49 @@ fn synthesize(style: TimerStyle) -> SamplesBuffer {
                 // The envelope is nonnegative; f32 sin(PI) can round below zero.
                 let envelope = (std::f32::consts::PI * progress).sin().max(0.0).powf(0.8);
                 envelope * (0.6 * filtered_noise + 0.11 * phase.sin())
+            }
+            TimerStyle::CodeRain => {
+                let frequency = 1320.0 * 2.0_f32.powf(-(time * 5.0).floor() / 12.0);
+                phase = (phase + TAU * frequency / SAMPLE_RATE as f32) % TAU;
+                let grain = (time * 10.0).fract();
+                let envelope = (grain * 30.0).min(1.0) * (-grain * 8.0).exp() * (-time * 2.8).exp();
+                envelope * (0.24 * phase.sin() + 0.07 * (phase * 2.0).sin())
+            }
+            TimerStyle::MachineCore => {
+                let noise = next_noise(&mut noise_state);
+                filtered_noise += 0.15 * (noise - filtered_noise);
+                let frequency = 70.0 + 470.0 * (-time * 3.5).exp();
+                phase = (phase + TAU * frequency / SAMPLE_RATE as f32) % TAU;
+                let latch = filtered_noise * (-time * 32.0).exp() * 0.5;
+                let body = (phase.sin() + 0.23 * (phase * 2.73).sin()) * (-time * 3.0).exp();
+                latch + body * 0.27
+            }
+            TimerStyle::DragonOrb => {
+                let mut chime = 0.0;
+                for (onset, frequency) in [(0.0, 523.25), (0.09, 783.99), (0.18, 1046.5)] {
+                    let elapsed = (time - onset).max(0.0);
+                    let envelope = (elapsed / 0.025).min(1.0) * (-elapsed * 3.2).exp();
+                    chime += envelope
+                        * (0.18 * (TAU * frequency * elapsed).sin()
+                            + 0.045 * (TAU * frequency * 2.003 * elapsed).sin());
+                }
+                chime
+            }
+            TimerStyle::CrescentWand => {
+                let mut chime = 0.0;
+                for (onset, frequency) in [
+                    (0.0, 659.25),
+                    (0.12, 987.77),
+                    (0.24, 1318.51),
+                    (0.38, 1567.98),
+                ] {
+                    let elapsed = (time - onset).max(0.0);
+                    let envelope = (elapsed / 0.035).min(1.0) * (-elapsed * 3.0).exp();
+                    chime += envelope
+                        * (0.14 * (TAU * frequency * elapsed).sin()
+                            + 0.025 * (TAU * frequency * 2.002 * elapsed).sin());
+                }
+                chime
             }
         };
         // Short ramps prevent clicks; every preset ends at zero and cannot loop.

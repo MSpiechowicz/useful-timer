@@ -1,3 +1,23 @@
+## Unreleased
+
+### Features
+
+* Add Code Rain, Machine Core, and four-star Dragon Orb timer artwork with distinct finite completion effects and synthesized sounds.
+* Expand the adaptive artwork picker to seven styles and add a saved per-timer Reduced motion option.
+* Keep new-style animation poses continuous across pause/resume and remaining-time adjustments.
+* Add illustrated Crescent Wand with an engraved crescent, compact upward-flaring ribbon folds and a three-bead center, round pearlescent crystal on a gold pedestal, falling sparkles, crystal-light/star-shower completion, and a synthesized chime.
+
+### Bug Fixes
+
+* Keep Hours, Minutes, and Seconds inputs fixed-width while editing long values.
+* Refine Machine Core sizing and spacing, remove the pale lens reflection and duplicate progress bar, and close its iris fully dark.
+* Keep Machine Core's white arcs rotating steadily and refine Dragon Orb's layered glass highlights.
+* Refine Crescent Wand with smaller, softly shaded ribbon folds below a raised crescent, a continuous pink neck joining the head to the medallion, and no decorative arcs above or below its jewels.
+* Seat Crescent Wand's crystal on a small gold pedestal behind the crescent's inner rim rather than stacked rings; keep the glow, glints, and star shower anchored to the crystal.
+* Reduce Crescent Wand's crystal and its lighting by 25% without moving its seat, remove the bottom-cap white line, and contain and soften the crescent's reflections.
+* Separate Crescent Wand's spiral engravings from its rim highlights and continue the inner highlight smoothly along the crescent.
+* Finish Crescent Wand's lower end cap in gold instead of pink, matching the surrounding gold collar.
+
 ## 1.0.0 (2026-09-30)
 
 ### Features
