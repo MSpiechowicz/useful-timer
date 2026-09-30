@@ -20,6 +20,28 @@ jobs:
       - name: Check out source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
+      - name: Install Node.js for release tooling checks
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.10.0'
+
+      - name: Check release stamping and artifact checksums
+        run: node --test .github/release/cargo.test.mjs
+
+      - name: Exercise Unix installers against local releases
+        if: runner.os != 'Windows'
+        run: python3 .github/tests/installers.py
+
+      - name: Exercise Windows installer with Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .github/tests/installers.ps1
+
+      - name: Exercise Windows installer with PowerShell 7
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .github/tests/installers.ps1
+
       - name: Install Linux native dependencies
         if: runner.os == 'Linux'
         run: |

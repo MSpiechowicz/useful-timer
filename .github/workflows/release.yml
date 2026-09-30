@@ -53,6 +53,8 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: macos-14
             target: x86_64-apple-darwin
+          - os: macos-14
+            target: aarch64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
     env:
@@ -106,7 +108,10 @@ jobs:
         run: |
           mkdir -p dist package
           cp "target/$RELEASE_TARGET/release/useful-timer" LICENSE README.md package/
-          tar -czf "dist/useful-timer-$RELEASE_VERSION-$RELEASE_TARGET.tar.gz" -C package useful-timer LICENSE README.md
+          cp assets/useful-timer.png package/
+          asset="useful-timer-$RELEASE_VERSION-$RELEASE_TARGET.tar.gz"
+          tar -czf "dist/$asset" -C package useful-timer LICENSE README.md useful-timer.png
+          (cd dist && shasum -a 256 "$asset" > "$asset.sha256")
 
       - name: Package Windows binary
         if: runner.os == 'Windows'
@@ -114,7 +119,10 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force dist, package | Out-Null
           Copy-Item "target/$env:RELEASE_TARGET/release/useful-timer.exe", LICENSE, README.md package/
-          Compress-Archive -Path package/* -DestinationPath "dist/useful-timer-$env:RELEASE_VERSION-$env:RELEASE_TARGET.zip"
+          $asset = "useful-timer-$env:RELEASE_VERSION-$env:RELEASE_TARGET.zip"
+          Compress-Archive -Path package/* -DestinationPath "dist/$asset"
+          $hash = (Get-FileHash -Algorithm SHA256 "dist/$asset").Hash.ToLowerInvariant()
+          "$hash  $asset" | Set-Content -Encoding ascii "dist/$asset.sha256"
 
       - name: Upload release archive
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
