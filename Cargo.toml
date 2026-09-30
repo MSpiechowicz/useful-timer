@@ -1,0 +1,16 @@
+[package]
+name = "useful-timer"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "GPL-3.0-only"
+description = "Independent animated desktop countdown widgets"
+
+[dependencies]
+eframe = { version = "0.36.2", default-features = false, features = ["default_fonts", "glow", "x11", "persistence"] }
+rodio = { version = "0.22.2", default-features = false, features = ["playback"] }
+ron = "0.12.2"
+serde = { version = "1", features = ["derive"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+winit = { version = "0.30.13", default-features = false, features = ["x11"] }
