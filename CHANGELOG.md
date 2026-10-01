@@ -25,6 +25,10 @@
 * Keep new-style animation poses continuous across pause/resume and remaining-time adjustments.
 * Add illustrated Crescent Wand with an engraved crescent, compact upward-flaring ribbon folds and a three-bead center, round pearlescent crystal on a gold pedestal, falling sparkles, crystal-light/star-shower completion, and a synthesized chime.
 * Add Clockwork Bloom with articulated porcelain petals, gold edges and stamens, physical hinges, a tiered hub and plinth, a remaining-time bar, and a synthesized latch-and-chime completion sound.
+* Display and edit sound volume as a percentage.
+* Add configured-duration minute adjustments and compact presets for 30 seconds, 1/3/5/10/15/30 minutes, and 1/2 hours.
+* Save a custom default duration for new timers across restarts without changing existing timers.
+* Separate settings sections with dividers and use outlined secondary actions with additional spacing.
 
 ### Bug Fixes
 

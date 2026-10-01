@@ -27,6 +27,7 @@ use crate::{
 const FRAME_INTERVAL: Duration = Duration::from_millis(33);
 const LOGIC_INTERVAL: Duration = Duration::from_millis(100);
 const WIDGET_TITLE_HEIGHT: f32 = 50.0;
+const DEFAULT_DURATION_KEY: &str = "useful-timer.default-duration-seconds";
 
 struct UpdateToast {
     message: String,
@@ -258,6 +259,7 @@ pub struct UsefulTimerApp {
     monitors: Vec<Monitor>,
     selected: Option<TimerId>,
     draft: TimerSettings,
+    default_duration: Duration,
     duration_input: TimeInput,
     remaining_input: TimeInput,
     remaining_dirty: bool,
@@ -329,11 +331,20 @@ impl UsefulTimerApp {
                     .collect()
             })
             .unwrap_or_default();
+        let default_duration = context
+            .storage
+            .and_then(|storage| eframe::get_value::<u64>(storage, DEFAULT_DURATION_KEY))
+            .filter(|seconds| (1..=86_400).contains(seconds))
+            .map(Duration::from_secs)
+            .unwrap_or_else(|| TimerSettings::default().duration);
         let selected = timers.first().map(|timer| timer.id);
         let draft = timers
             .first()
             .map(|timer| timer.settings().clone())
-            .unwrap_or_default();
+            .unwrap_or_else(|| TimerSettings {
+                duration: default_duration,
+                ..TimerSettings::default()
+            });
         let app = Self {
             shared: Arc::new(Mutex::new(SharedState {
                 timers,
@@ -344,6 +355,7 @@ impl UsefulTimerApp {
             windows: Vec::new(),
             monitors,
             selected,
+            default_duration,
             duration_input: TimeInput::from_duration(draft.duration),
             remaining_input: TimeInput::from_duration(draft.duration),
             remaining_dirty: false,
@@ -511,7 +523,10 @@ impl UsefulTimerApp {
 
     fn new_draft(&mut self) {
         self.selected = None;
-        self.draft = TimerSettings::default();
+        self.draft = TimerSettings {
+            duration: self.default_duration,
+            ..TimerSettings::default()
+        };
         self.duration_input = TimeInput::from_duration(self.draft.duration);
         self.remaining_dirty = false;
         self.editor_error = None;
@@ -838,17 +853,95 @@ impl UsefulTimerApp {
             .push_id("configured-duration", |ui| self.duration_input.ui(ui).0)
             .inner;
         ui.horizontal_wrapped(|ui| {
-            for minutes in [5, 15, 25, 45] {
+            for (label, seconds) in [
+                ("+1 min", 60),
+                ("−1 min", -60),
+                ("+5 min", 300),
+                ("−5 min", -300),
+            ] {
                 if ui
-                    .add_sized([80.0, 36.0], egui::Button::new(format!("{minutes} min")))
+                    .add_sized([80.0, 36.0], egui::Button::new(label))
                     .clicked()
                 {
-                    self.duration_input =
-                        TimeInput::from_duration(Duration::from_secs(minutes * 60));
+                    let seconds = self
+                        .duration_input
+                        .duration()
+                        .as_secs()
+                        .saturating_add_signed(seconds)
+                        .clamp(1, 86_400);
+                    self.duration_input = TimeInput::from_duration(Duration::from_secs(seconds));
                     changed = true;
                 }
             }
         });
+        ui.add_space(12.0);
+        ui.horizontal_wrapped(|ui| {
+            let duration = self.duration_input.duration();
+            if ui
+                .add_enabled(
+                    (Duration::from_secs(1)..=Duration::from_secs(86_400)).contains(&duration)
+                        && duration != self.default_duration,
+                    egui::Button::new("Save duration as default")
+                        .fill(Color32::TRANSPARENT)
+                        .stroke(egui::Stroke::new(1.0, colors.border)),
+                )
+                .on_hover_text("Use this duration for new timers, including after restarting the app. Existing timers are unchanged.")
+                .clicked()
+            {
+                self.default_duration = duration;
+            }
+            ui.label(
+                RichText::new(format!(
+                    "Default: {}",
+                    visuals::format_remaining(self.default_duration)
+                ))
+                .small()
+                .color(colors.muted),
+            );
+        });
+        ui.add_space(16.0);
+        ui.separator();
+        ui.add_space(8.0);
+        ui.label(RichText::new("Duration presets").size(17.0).strong());
+        let columns = ((ui.available_width() + 10.0) / 90.0)
+            .floor()
+            .clamp(1.0, 3.0) as usize;
+        egui::Grid::new("duration-presets")
+            .num_columns(columns)
+            .spacing(egui::vec2(10.0, 10.0))
+            .show(ui, |ui| {
+                for (index, (label, seconds)) in [
+                    ("30 sec", 30),
+                    ("1 min", 60),
+                    ("3 min", 180),
+                    ("5 min", 300),
+                    ("10 min", 600),
+                    ("15 min", 900),
+                    ("30 min", 1800),
+                    ("1 h", 3600),
+                    ("2 h", 7200),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let duration = Duration::from_secs(seconds);
+                    if ui
+                        .add_sized(
+                            [80.0, 30.0],
+                            egui::Button::new(label)
+                                .small()
+                                .selected(self.duration_input.duration() == duration),
+                        )
+                        .clicked()
+                    {
+                        self.duration_input = TimeInput::from_duration(duration);
+                        changed = true;
+                    }
+                    if (index + 1) % columns == 0 {
+                        ui.end_row();
+                    }
+                }
+            });
         ui.label(
             RichText::new("Changing duration resets the countdown.")
                 .small()
@@ -883,18 +976,24 @@ impl UsefulTimerApp {
 
     fn sound_settings(&mut self, ui: &mut egui::Ui) -> bool {
         let colors = self.theme.palette();
+        let mut volume_percent = self.draft.volume * 100.0;
         ui.label(RichText::new("Sound").size(17.0).strong());
         let mut changed = ui
             .horizontal(|ui| {
                 let label = ui.label(RichText::new("Volume").color(colors.muted));
                 ui.add_enabled(
                     !self.draft.muted,
-                    egui::Slider::new(&mut self.draft.volume, 0.0..=1.0).fixed_decimals(2),
+                    egui::Slider::new(&mut volume_percent, 0.0..=100.0)
+                        .suffix("%")
+                        .fixed_decimals(0),
                 )
                 .labelled_by(label.id)
                 .changed()
             })
             .inner;
+        if changed {
+            self.draft.volume = volume_percent / 100.0;
+        }
         changed |= ui
             .checkbox(&mut self.draft.muted, "Mute completion sound")
             .changed();
@@ -914,7 +1013,7 @@ impl UsefulTimerApp {
                     if let Some(id) = self.selected {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.menu_button("•••", |ui| {
-                                if ui.button("Restore defaults").on_hover_text("Reset to Focus, 25 minutes, Bomb, 300 px, volume 0.60, and idle.").clicked() {
+                                if ui.button("Restore defaults").on_hover_text("Reset to Focus, 25 minutes, Bomb, 300 px, volume 60%, and idle.").clicked() {
                                     queue(&self.shared, ui.ctx(), Command::Action(id, TimerAction::RestoreDefaults));
                                     self.draft = TimerSettings::default();
                                     self.duration_input = TimeInput::from_duration(self.draft.duration);
@@ -948,13 +1047,21 @@ impl UsefulTimerApp {
                 if let Some(view) = views.iter().find(|view| Some(view.id) == self.selected) {
                     self.live_controls(ui, view);
                     ui.add_space(10.0);
+                    ui.separator();
+                    ui.add_space(8.0);
                 }
                 changed |= self.artwork_picker(ui);
                 ui.add_space(12.0);
+                ui.separator();
+                ui.add_space(8.0);
                 changed |= self.duration_controls(ui);
                 ui.add_space(16.0);
+                ui.separator();
+                ui.add_space(8.0);
                 changed |= self.widget_settings(ui);
                 ui.add_space(16.0);
+                ui.separator();
+                ui.add_space(8.0);
                 changed |= self.sound_settings(ui);
                 if changed && self.selected.is_some() {
                     self.submit_settings(ui.ctx());
@@ -968,7 +1075,7 @@ impl UsefulTimerApp {
                         if ui.add(primary_button("Create timer", colors).min_size(egui::vec2(160.0, 42.0))).clicked() {
                             self.submit_settings(ui.ctx());
                         }
-                        if ui.add(egui::Button::new("Reset form").min_size(egui::vec2(160.0, 42.0))).clicked() {
+                        if ui.add(egui::Button::new("Reset form").fill(Color32::TRANSPARENT).stroke(egui::Stroke::new(1.0, colors.border)).min_size(egui::vec2(160.0, 42.0))).clicked() {
                             self.new_draft();
                         }
                     });
@@ -1233,6 +1340,7 @@ impl eframe::App for UsefulTimerApp {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, theme::STORAGE_KEY, &self.theme);
+        eframe::set_value(storage, DEFAULT_DURATION_KEY, &self.default_duration.as_secs());
         let saved = {
             let state = self.shared.lock().expect("timer state lock poisoned");
             SavedState::from_timers(&state.timers)
