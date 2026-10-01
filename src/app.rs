@@ -927,9 +927,8 @@ impl UsefulTimerApp {
                     let duration = Duration::from_secs(seconds);
                     if ui
                         .add_sized(
-                            [80.0, 30.0],
+                            [80.0, 36.0],
                             egui::Button::new(label)
-                                .small()
                                 .selected(self.duration_input.duration() == duration),
                         )
                         .clicked()
