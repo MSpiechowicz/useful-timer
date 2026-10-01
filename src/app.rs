@@ -471,9 +471,9 @@ impl UsefulTimerApp {
         ctx.request_repaint_after_for(toast.expires - now, ViewportId::ROOT);
         let colors = self.theme.palette();
         let accent = if toast.success {
-            Color32::from_rgb(118, 197, 144)
+            colors.success
         } else {
-            colors.warning
+            colors.danger
         };
         let mut dismiss = false;
         egui::Area::new(egui::Id::new("update_toast"))
@@ -481,7 +481,7 @@ impl UsefulTimerApp {
             .anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-20.0, -20.0))
             .show(ctx, |ui| {
                 egui::Frame::new()
-                    .fill(colors.raised)
+                    .fill(colors.surface)
                     .stroke(egui::Stroke::new(1.0, accent))
                     .corner_radius(8)
                     .inner_margin(16.0)
@@ -500,11 +500,11 @@ impl UsefulTimerApp {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    dismiss = ui.small_button("Dismiss").clicked();
+                                    dismiss = ui.button("Dismiss").clicked();
                                 },
                             );
                         });
-                        ui.label(&toast.message);
+                        ui.label(RichText::new(&toast.message).color(colors.text));
                     });
             });
         if dismiss {
