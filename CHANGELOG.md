@@ -29,6 +29,7 @@
 * Add configured-duration minute adjustments and compact presets for 30 seconds, 1/3/5/10/15/30 minutes, and 1/2 hours.
 * Save a custom default duration for new timers across restarts without changing existing timers.
 * Separate settings sections with dividers and use outlined secondary actions with additional spacing.
+* Simplify the README for everyday users and add screenshots of all eight timer styles and the countdown workspace.
 
 ### Bug Fixes
 
