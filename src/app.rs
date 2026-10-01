@@ -1339,7 +1339,11 @@ impl eframe::App for UsefulTimerApp {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, theme::STORAGE_KEY, &self.theme);
-        eframe::set_value(storage, DEFAULT_DURATION_KEY, &self.default_duration.as_secs());
+        eframe::set_value(
+            storage,
+            DEFAULT_DURATION_KEY,
+            &self.default_duration.as_secs(),
+        );
         let saved = {
             let state = self.shared.lock().expect("timer state lock poisoned");
             SavedState::from_timers(&state.timers)
