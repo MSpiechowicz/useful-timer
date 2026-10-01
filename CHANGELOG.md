@@ -33,6 +33,7 @@
 
 ### Bug Fixes
 
+* Enable native browser support so Release notes and manual-release links open their destination instead of doing nothing.
 * Render Clockwork Bloom with per-pixel depth testing, antialiased metal hardware and petals, finer plinth geometry, and supersampled pixel coverage; keep solid hardware lighting continuous through grazing angles.
 * Make Bloom's completion unfold monotonically into a stationary final pose, without reversal or oscillation, and keep its caption fixed above the entire animation with a small margin.
 * Keep Hours, Minutes, and Seconds inputs fixed-width while editing long values.

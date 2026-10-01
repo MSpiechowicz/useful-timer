@@ -107,6 +107,7 @@ In a timer's **•••** menu, **Restore defaults** restores its factory setti
 - Reopening the app restores timers **stopped at their full duration**. Running countdown progress does not survive a restart.
 - Closing the control panel quits all timers. They do not continue in the background.
 - The app checks GitHub for updates at startup. Install only when you choose to; keep the app open until installation finishes. Restarting after an update resets countdowns.
+- **Release notes** opens the release page in your default browser.
 - No accounts, analytics, or cloud sync. Timer names and settings are not sent to GitHub. Timers work without an internet connection; the update check still sends normal connection information, such as your IP address, to GitHub.
 
 <details>
