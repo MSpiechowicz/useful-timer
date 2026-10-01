@@ -99,6 +99,8 @@ Changing **Duration** resets that timer to its new full time. To change a countd
 | **Reduced motion** | Keep time and progress visible with less animation. |
 | **Theme** | Switch between blue-accented **GitHub** and warm **Charcoal**. |
 
+Both themes use a dark interface. Your choice controls text, controls, and notification colors independently of your system's light or dark appearance.
+
 In a timer's **•••** menu, **Restore defaults** restores its factory settings, including 25 minutes. It does not erase your saved default duration for new timers.
 
 ## Saving, updates, and privacy

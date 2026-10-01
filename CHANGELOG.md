@@ -33,6 +33,8 @@
 
 ### Bug Fixes
 
+* Keep theme colors, font sizes, and control spacing active from the first frame on macOS, including when the system appearance changes.
+* Match update toasts to GitHub and Charcoal with theme-specific status colors, a distinct card background, explicit message colors, and a full-size Dismiss button.
 * Enable native browser support so Release notes and manual-release links open their destination instead of doing nothing.
 * Render Clockwork Bloom with per-pixel depth testing, antialiased metal hardware and petals, finer plinth geometry, and supersampled pixel coverage; keep solid hardware lighting continuous through grazing angles.
 * Make Bloom's completion unfold monotonically into a stationary final pose, without reversal or oscillation, and keep its caption fixed above the entire animation with a small margin.
