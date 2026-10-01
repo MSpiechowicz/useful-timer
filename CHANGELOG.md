@@ -1,3 +1,14 @@
+## [1.4.0](https://github.com/MSpiechowicz/useful-timer/compare/v1.3.0...v1.4.0) (2026-10-01)
+
+### Features
+
+* add compact duration presets and saved defaults ([dd764df](https://github.com/MSpiechowicz/useful-timer/commit/dd764df6a508f00873fa5c3fdd2b510f1e8439cb))
+
+### Bug Fixes
+
+* enable browser opening for release links ([d26ec4d](https://github.com/MSpiechowicz/useful-timer/commit/d26ec4d8b51659e0756f52c83820de0daf21c856))
+* match preset and duration button sizes ([e60e4b0](https://github.com/MSpiechowicz/useful-timer/commit/e60e4b025e66960693219c81eb277e7bffbaccf4))
+
 ## [1.3.0](https://github.com/MSpiechowicz/useful-timer/compare/v1.2.1...v1.3.0) (2026-09-30)
 
 ### Features
