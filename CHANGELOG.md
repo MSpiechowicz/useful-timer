@@ -1,3 +1,9 @@
+## [1.4.1](https://github.com/MSpiechowicz/useful-timer/compare/v1.4.0...v1.4.1) (2026-10-01)
+
+### Bug Fixes
+
+* preserve macOS theme styling and readable toasts ([b14fe52](https://github.com/MSpiechowicz/useful-timer/commit/b14fe527a253d085bca7ae0ae81433cae885ac43))
+
 ## [1.4.0](https://github.com/MSpiechowicz/useful-timer/compare/v1.3.0...v1.4.0) (2026-10-01)
 
 ### Features
