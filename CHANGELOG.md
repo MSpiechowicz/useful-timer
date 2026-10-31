@@ -1,3 +1,9 @@
+## [1.4.2](https://github.com/MSpiechowicz/useful-timer/compare/v1.4.1...v1.4.2) (2026-10-31)
+
+### Bug Fixes
+
+* **deps:** update rustls and webpki-roots to clear advisories ([e0695bf](https://github.com/MSpiechowicz/useful-timer/commit/e0695bf98ec9b6fb4d0997ecf74d6eacde2b62c1))
+
 ## [1.4.1](https://github.com/MSpiechowicz/useful-timer/compare/v1.4.0...v1.4.1) (2026-10-01)
 
 ### Bug Fixes
